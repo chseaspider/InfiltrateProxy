@@ -1,0 +1,88 @@
+S: 中转服务器
+C: pad端
+H: PC端
+P: C和H的代理模块
+
+P->S: 登陆
+{
+	"cmd":"login",
+	"ip":"192.168.1.5",
+	"port":"45124",
+	"mode":"host",	//	"client"
+	"name":"Shadowbringers"
+}
+
+S->P: 登陆回应
+{
+	"cmd":"login_ack",
+	"next_hb":60,	// 单位:秒
+	"ret":0,
+	"msg":"ok"
+}
+
+P->S: 心跳
+{
+	"cmd":"heart_beat",
+	"dst_ip":"192.168.1.5",	// 连通的才发
+	"name":"Shadowbringers" // 连通的才发
+}
+
+S->P: 心跳回应
+{
+	"cmd":"heart_ack",
+	"ret":0,
+	"msg":"ok",
+	"next_hb":60	// 单位:秒
+}
+
+P->S: 获取nat后的IP与端口信息
+{
+	"cmd":"get_nat_port",
+	"ip":"192.168.1.5",
+	"port":"45124",
+	"name":"Shadowbringers"
+}
+
+S->P: nat回应
+{
+	"cmd":"nat_port_ack",
+	"ip":"192.168.1.5",
+	"port":"45124",
+	"ret":0,
+	"msg":"ok"
+}
+
+P->S: 代理请求
+{
+	"cmd":"proxy_request",
+	"dst_ip":"192.168.1.5",
+	"name":"Shadowbringers"
+}
+
+S->P: 代理回应
+{
+	"cmd":"proxy_ack",
+	"ret":0,
+	"msg":"ok",
+	"mode":"wait|guess" // wait: 等待代理命令, guess: 进行端口猜测
+}
+
+P->S: 端口猜测->get_nat_port (服务端处理完3个包后进入proxy_task阶段)
+
+S->P: 代理命令下发
+{
+	"cmd":"proxy_task",
+	"dst_ip":"192.168.1.5",
+	"guess_port":"45124",	// 预测的对方端口
+	"mode":"cone|symmetrical",
+	"offset":"2"			// 偏移量(锥形,同端口连N次;对称:N次端口加N)
+}
+
+P->S: 代理情况回应
+{
+	"cmd":"proxy_task_ack",
+	"ret":0,
+	"msg":"ok"
+}
+
+
