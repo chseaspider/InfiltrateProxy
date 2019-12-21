@@ -7,14 +7,14 @@
 #define INFP_HASH_MAX 0x100
 #define INFP_HASH_MASK 0xff
 
-/* ´æ·ÅÒ»Ğ©È«¾Ö±äÁ¿ */
+/* å­˜æ”¾ä¸€äº›å…¨å±€å˜é‡ */
 typedef struct infp_s
 {
-	__u16 port;				// ¼àÌıµÄÖ÷¶Ë¿Ú, Ö÷Á¬½ÓÓÃ
-	__u16 port_list[11];	// ¼àÌıµÄSTUN²âÊÔ¶Ë¿Ú(Ôİ¿ª11¸ö)
+	__u16 port;				// ç›‘å¬çš„ä¸»ç«¯å£, ä¸»è¿æ¥ç”¨
+	__u16 port_arr[11];		// ç›‘å¬çš„STUNæµ‹è¯•ç«¯å£(æš‚å¼€11ä¸ª)
 
-	sock_t main_sock;		// ¶ÔÓ¦port
-	sock_t sock_list[11];	// ¶ÔÓ¦port_list
+	sock_t main_sock;		// å¯¹åº”port
+	sock_t sock_arr[11];	// å¯¹åº”port_list
 
 	struct list_head dev_list;
 	struct hlist_head dev_hash[INFP_HASH_MAX];
@@ -22,18 +22,18 @@ typedef struct infp_s
 
 typedef struct infp_cli_s
 {
-	__u32 ip;			// ÖÕ¶ËµÄÄÚÍøIPµØÖ·
-	char name[32];		// ÖÕ¶Ë±êÊ¶(¿ÉÒÔÎª¿Õ,IPµØÖ·³åÍ»Ê±Ğè¸ãÒ»¸ö,·ÀÖ¹Á¬µ½±ğÈË¼ÒµÄÉè±¸È¥)
+	__u32 ip;			// ç»ˆç«¯çš„å†…ç½‘IPåœ°å€
+	char name[32];		// ç»ˆç«¯æ ‡è¯†(å¯ä»¥ä¸ºç©º,IPåœ°å€å†²çªæ—¶éœ€æä¸€ä¸ª,é˜²æ­¢è¿åˆ°åˆ«äººå®¶çš„è®¾å¤‡å»)
 
-	__u8 nat_type;		// natÀàĞÍ @see C_NAT_TYPE
-	__u8 mode;			// 0: ¿Í»§¶Ë 1: PC¶Ë
-	__u16 guess_port;	// ²Â²âµÄ¿ÉÓÃ¶Ë¿Ú(Á½±ß¶¼ÊÇ¶Ô³ÆNATµÄÇé¿öÔİÎ´´¦Àí)
+	__u8 nat_type;		// natç±»å‹ @see C_NAT_TYPE
+	__u8 mode;			// 0: å®¢æˆ·ç«¯ 1: PCç«¯
+	__u16 guess_port;	// çŒœæµ‹çš„å¯ç”¨ç«¯å£(ä¸¤è¾¹éƒ½æ˜¯å¯¹ç§°NATçš„æƒ…å†µæš‚æœªå¤„ç†)
 
-	__u32 dst_ip;		// ·ÃÎÊµÄÄ¿±êIP
-	char dst_name[32];	// ·ÃÎÊµÄÄ¿±ê±êÊ¶(¿ÉÒÔÎª¿Õ,IPµØÖ·³åÍ»Ê±Ğè¸ãÒ»¸ö,·ÀÖ¹Á¬µ½±ğÈË¼ÒµÄÉè±¸È¥)
+	__u32 dst_ip;		// è®¿é—®çš„ç›®æ ‡IP
+	char dst_name[32];	// è®¿é—®çš„ç›®æ ‡æ ‡è¯†(å¯ä»¥ä¸ºç©º,IPåœ°å€å†²çªæ—¶éœ€æä¸€ä¸ª,é˜²æ­¢è¿åˆ°åˆ«äººå®¶çš„è®¾å¤‡å»)
 
-	struct list_head list_to;	// ¹ØÁªinfp_t.dev_list
-	struct hlist_node hash_to;	// ¹ØÁªinfp_t.dev_hash ip+name×÷ÎªhashÖµ
+	struct list_head list_to;	// å…³è”infp_t.dev_list
+	struct hlist_node hash_to;	// å…³è”infp_t.dev_hash ip+nameä½œä¸ºhashå€¼
 }infp_cli_t;
 
 #endif // __SERVER_H__

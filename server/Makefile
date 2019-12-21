@@ -1,7 +1,7 @@
 CFLAGS += -I./include -I../common/include -O2 -Wall
 LDFLAGS += -lm
 
-OBJS = main.o ../common/cJSON.o
+OBJS = main.o ../common/cJSON.o ../common/sock.o
 
 SAY=echo "server"
 EXEC=server

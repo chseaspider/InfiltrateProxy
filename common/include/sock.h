@@ -1,6 +1,11 @@
 #ifndef __SOCK_H__
 #define __SOCK_H__
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <poll.h>
+#include <fcntl.h>
+
 #include "c_type.h"
 
 typedef struct sock_s
@@ -8,14 +13,62 @@ typedef struct sock_s
 	int fd;
 	int poll_i;
 
-	char* recv_buf;		// ½ÓÊÕ»º´æ
-	int recv_buf_len;	// ½ÓÊÕ»º´æ×Ü´óĞ¡
-	int recv_len;		// µ±Ç°ÒÑ½ÓÊÕÊı¾İ´óĞ¡
+	char* recv_buf;		// æ¥æ”¶ç¼“å­˜
+	int recv_buf_len;	// æ¥æ”¶ç¼“å­˜æ€»å¤§å°
+	int recv_len;		// å½“å‰å·²æ¥æ”¶æ•°æ®å¤§å°
 
-	char* send_buf;		// ·¢ËÍ»º´æ
-	int send_buf_len;	// ·¢ËÍ»º´æ×Ü´óĞ¡
-	int send_len;		// µ±Ç°´ı·¢ËÍÊı¾İ´óĞ¡
+	char* send_buf;		// å‘é€ç¼“å­˜
+	int send_buf_len;	// å‘é€ç¼“å­˜æ€»å¤§å°
+	int send_len;		// å½“å‰å¾…å‘é€æ•°æ®å¤§å°
 }sock_t;
+
+static inline void poll_add_write(struct pollfd* _poll)
+{
+	_poll->events |= POLLOUT;
+}
+
+static inline void poll_del_write(struct pollfd* _poll)
+{
+	_poll->events &= (~POLLOUT);
+}
+
+static inline void poll_add_read(struct pollfd* _poll)
+{
+	_poll->events |= POLLIN;
+}
+
+static inline void poll_del_read(struct pollfd* _poll)
+{
+	_poll->events &= (~POLLIN);
+}
+
+static inline int set_sock_block(int fd)
+{
+	//è®¾ç½®å¥—æ¥å­—éé˜»å¡
+	int ret = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
+	if(ret == -1)
+	{
+		perror("set sock block:");
+	}
+
+	return ret;
+}
+
+static inline int set_sock_nonblock(int fd)
+{
+	//è®¾ç½®å¥—æ¥å­—éé˜»å¡
+	int ret = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+	if(ret == -1)
+	{
+		perror("set sock nonblock:");
+	}
+
+	return ret;
+}
+
+int sock_add_poll(struct pollfd* _poll, int max, sock_t* sock);
+int sock_del_poll(struct pollfd* _poll, int max, sock_t* sock);
+int create_udp(sock_t *sock, __u32 ip, __u16 port);
 
 #endif
 

@@ -17,7 +17,8 @@ S->P: 登陆回应
 	"cmd":"login_ack",
 	"next_hb":60,	// 单位:秒
 	"ret":0,
-	"msg":"ok"
+	"msg":"ok",
+	"port_list":[45124,45123] // 测试STUN用的端口列表
 }
 
 P->S: 心跳
