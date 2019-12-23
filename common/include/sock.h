@@ -12,6 +12,7 @@ typedef struct sock_s
 {
 	int fd;
 	int poll_i;
+	int proxy;			// 1:代理sock
 
 	char* recv_buf;		// 接收缓存
 	int recv_buf_len;	// 接收缓存总大小

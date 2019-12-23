@@ -3,7 +3,7 @@
 
 #include "stdlib.h"
 
-inline void* mem_malloc(__u32 size)
+static inline void* mem_malloc(__u32 size)
 {
 	void* temp = malloc(size);
 	if(temp)
@@ -14,7 +14,23 @@ inline void* mem_malloc(__u32 size)
 	return temp;
 }
 
-inline void mem_free(void* ptr)
+static inline void* mem_realloc(void* ptr, __u32 size)
+{
+	void* temp;
+	if(ptr)
+	{
+		temp = realloc(ptr, size);
+	}
+	else
+	{
+		temp = mem_malloc(size);
+	}
+
+	return temp;
+}
+
+
+static inline void mem_free(void* ptr)
 {
 	if(ptr)
 		free(ptr);

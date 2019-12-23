@@ -28,21 +28,19 @@ int infp_init(void)
 	}
 
 	//初始化端口表
-	gl_infp.port = INFP_DEFAFULT_PORT;
-	for(i = 0; i < sizeof(gl_infp.port_arr)/sizeof(gl_infp.port_arr[0]); i++)
-	{
-		gl_infp.port_arr[i] = INFP_DEFAFULT_PORT + (i+1);
-	}
+	gl_infp.main_port = INFP_DEFAFULT_PORT;
+	gl_infp.back_port = INFP_DEFAFULT_PORT + 1;
 
 	//初始化sock
-	if(create_udp(&gl_infp.main_sock, 0, gl_infp.port))
+	if(create_udp(&gl_infp.main_sock, 0, htons(gl_infp.main_port)))
 		return -1;
+	// 设置非阻塞
+	set_sock_nonblock(gl_infp.main_sock.fd);
 
-	for(i = 0; i < sizeof(gl_infp.sock_arr)/sizeof(gl_infp.sock_arr[0]); i++)
-	{
-		if(create_udp(&gl_infp.sock_arr[i], 0, gl_infp.port_arr[i]))
-			return -1;
-	}
+	if(create_udp(&gl_infp.back_sock, 0, htons(gl_infp.back_port)))
+		return -1;
+	// 设置非阻塞
+	set_sock_nonblock(gl_infp.back_sock.fd);
 
 	return 0;
 }
@@ -51,24 +49,81 @@ int init_poll(void)
 {
 	int i;
 	memset(poll_arr, 0, sizeof(poll_arr));
-	for(i = 0; i < INFP_POLL_MAX; i++)
+	curfds = sock_add_poll(&poll_arr[0], INFP_POLL_MAX, &gl_infp.main_sock);
+	if(curfds < 0)
+	{
+		return -1;
+	}
+
+	curfds = sock_add_poll(&poll_arr[1], INFP_POLL_MAX, &gl_infp.back_sock);
+	if(curfds < 0)
+	{
+		return -1;
+	}
+
+	for(i = 2; i < INFP_POLL_MAX; i++)
 	{
 		poll_arr[i].fd = -1;
-		curfds = sock_add_poll(poll_arr+i, INFP_POLL_MAX, i ? &gl_infp.sock_arr[i-1] : &gl_infp.main_sock);
-		if(curfds < 0)
-		{
-			return -1;
-		}
 	}
 
 	return 0;
 }
 
+void infp_main_recv(sock_t* sock)
+{
+	struct sockaddr_in addr;
+	// 总会收包报错的
+	while(udp_sock_recv(sock, &addr) > 0)
+	{
+		infp_recv_do(sock, &addr);
+	}
+}
+
 void infp_poll_run(void)
 {
+	int nready = 0, i = 0;
 	while(1)
 	{
-		
+		nready = poll(poll_arr, curfds, 30);
+		if (nready == -1)
+		{
+			perror("poll error:");
+			abort();
+		}
+
+		for(i = 0; i < curfds; i++)
+		{
+			if(poll_arr[i].fd == gl_infp.main_sock.fd
+				|| poll_arr[i].fd == gl_infp.back_sock.fd)
+			{
+				if(poll_arr[i].events & POLLIN)
+				{
+					sock_t *sock = NULL;
+					if(poll_arr[i].fd == gl_infp.main_sock.fd)
+						sock = &gl_infp.main_sock;
+					else if(poll_arr[i].fd == gl_infp.main_sock.fd)
+						sock = &gl_infp.back_sock;
+					else
+						return;	// 没这种情况
+
+					infp_main_recv(sock);
+				}
+
+				// 没有POLLOUT这个说法, 直接sendto
+				if(poll_arr[i].events & POLLERR)
+				{
+					return;
+				}
+			}
+			else
+			{
+				printf("???\n");
+				return;
+			}
+
+			if(--nready <= 0)
+				break;
+		}
 	}
 }
 

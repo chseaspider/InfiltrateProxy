@@ -18,7 +18,6 @@ S->P: 登陆回应
 	"next_hb":60,	// 单位:秒
 	"ret":0,
 	"msg":"ok",
-	"port_list":[45124,45123] // 测试STUN用的端口列表
 }
 
 P->S: 心跳
@@ -36,9 +35,9 @@ S->P: 心跳回应
 	"next_hb":60	// 单位:秒
 }
 
-P->S: 获取nat后的IP与端口信息
+P->S: 获取nat后的IP与端口信息(登陆回应后调用,连接服务器的副端口)
 {
-	"cmd":"get_nat_port",
+	"cmd":"get_nat_type",
 	"ip":"192.168.1.5",
 	"port":"45124",
 	"name":"Shadowbringers"
@@ -46,9 +45,10 @@ P->S: 获取nat后的IP与端口信息
 
 S->P: nat回应
 {
-	"cmd":"nat_port_ack",
-	"ip":"192.168.1.5",
-	"port":"45124",
+	"cmd":"nat_type_ack",
+	"ip":"192.168.1.5",	// NAT后IP
+	"port":"45124",		// NAT后port
+	"type":"2",			// @see c_type.h C_NAT_TYPE
 	"ret":0,
 	"msg":"ok"
 }
@@ -68,15 +68,22 @@ S->P: 代理回应
 	"mode":"wait|guess" // wait: 等待代理命令, guess: 进行端口猜测
 }
 
-P->S: 端口猜测->get_nat_port (服务端处理完3个包后进入proxy_task阶段)
+P->S: 端口猜测
+{
+	"cmd":"get_nat_port",
+	"ip":"192.168.1.5",
+	"port":"45124",
+	"num":"0",	// 序号,第一个包还是第二个包,连续发两个，用于端口预测
+	"name":"Shadowbringers"
+}
 
-S->P: 代理命令下发
+S->P: 代理命令下发 (作为"get_nat_port"的回应包)
 {
 	"cmd":"proxy_task",
 	"dst_ip":"192.168.1.5",
 	"guess_port":"45124",	// 预测的对方端口
-	"mode":"cone|symmetrical",
-	"offset":"2"			// 偏移量(锥形,同端口连N次;对称:N次端口加N)
+	"mode":"0",	// 区别 offset 使用方式
+	"offset":"3"// 偏移量(mode(0),同端口连3次;mode(1):端口加0/1/2,连三个端口)
 }
 
 P->S: 代理情况回应

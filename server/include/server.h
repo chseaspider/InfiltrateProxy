@@ -10,27 +10,43 @@
 /* 存放一些全局变量 */
 typedef struct infp_s
 {
-	__u16 port;				// 监听的主端口, 主连接用
-	__u16 port_arr[11];		// 监听的STUN测试端口(暂开11个)
+	__u16 main_port;		// 监听的主端口, 主连接用
+	__u16 back_port;		// 监听的副端口, 用于检测NAT类型
 
-	sock_t main_sock;		// 对应port
-	sock_t sock_arr[11];	// 对应port_list
+	sock_t main_sock;		// 对应main_port
+	sock_t back_sock;		// 对应back_port
 
 	struct list_head dev_list;
 	struct hlist_head dev_hash[INFP_HASH_MAX];
 }infp_t;
 
+typedef struct infp_port_s
+{
+	__u16 src_port;
+	__u16 nat_port;
+}infp_port_t;
+
 typedef struct infp_cli_s
 {
-	__u32 ip;			// 终端的内网IP地址
-	char name[32];		// 终端标识(可以为空,IP地址冲突时需搞一个,防止连到别人家的设备去)
+	char ip[32];		// 终端的内网IP地址
+	char name[32];		// 终端名称(自定义/系统获取)
+	char des[64];		// 终端标识(IP地址+终端名称)
+
+	__u32 nat_ip;		// 公网IP地址(网络序)
+
+	infp_port_t main_port;	// 与服务器主连接的端口信息
+	infp_port_t guess[2];	// 用于端口预测(仅支持等差数列的情况)
 
 	__u8 nat_type;		// nat类型 @see C_NAT_TYPE
 	__u8 mode;			// 0: 客户端 1: PC端
-	__u16 guess_port;	// 猜测的可用端口(两边都是对称NAT的情况暂未处理)
+	__u8 failed_count;	// 打洞失败次数
+	__u8 pad;
 
-	__u32 dst_ip;		// 访问的目标IP
-	char dst_name[32];	// 访问的目标标识(可以为空,IP地址冲突时需搞一个,防止连到别人家的设备去)
+	__u32 uptime;		// 更新时间 jiffies
+
+	char dst_ip[32];	// 访问的目标IP
+	char dst_name[32];	// 访问的目标名称
+	char dst_des[64];	// 访问的目标标识(IP+名称)
 
 	struct list_head list_to;	// 关联infp_t.dev_list
 	struct hlist_node hash_to;	// 关联infp_t.dev_hash ip+name作为hash值

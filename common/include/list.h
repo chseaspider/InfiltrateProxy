@@ -3,6 +3,12 @@
 
 #include <stdbool.h>
 
+#define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
+
+#define container_of(ptr, type, member) ({\
+const typeof( ((type *)0)->member ) *__mptr = (ptr);\
+(type *)( (char *)__mptr - offsetof(type,member) );})
+
 #ifdef CONFIG_ILLEGAL_POINTER_VALUE
 # define POISON_POINTER_DELTA _AC(CONFIG_ILLEGAL_POINTER_VALUE, UL)
 #else
@@ -11,6 +17,20 @@
 
 #define LIST_POISON1  ((void *) 0x100 + POISON_POINTER_DELTA)
 #define LIST_POISON2  ((void *) 0x200 + POISON_POINTER_DELTA)
+
+static inline unsigned int SDBMHash(char *str)
+{
+	unsigned int hash = 0;
+
+	while (*str)
+	{
+		// equivalent to: hash = 65599*hash + (*str++);
+		hash = (*str++) + (hash << 6) + (hash << 16) - hash;
+	}
+
+	return (hash & 0x7FFFFFFF);
+}
+
 
 struct list_head {
 	struct list_head *next, *prev;
