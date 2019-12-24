@@ -3,22 +3,51 @@
 #include <string.h>
 #include <unistd.h>
 #include <poll.h>
+#include <arpa/inet.h>
 
 #include "c_type.h"
 #include "sock.h"
 
 #include "server.h"
+#include "work.h"
+
+int debug_level = 0;
 
 #define INFP_DEFAFULT_PORT 45124 // TODO: 配置文件获取
 #define INFP_POLL_MAX 20		// 随手写的, 目前只监听12个端口
 
-static infp_t gl_infp = {};
+infp_t gl_infp = {};
 struct pollfd poll_arr[INFP_POLL_MAX];
 int curfds = 0;	// 当前pollfd中最大有效下标
+
+void infp_timeout(unsigned long data)
+{
+	infp_cli_t *cli;
+	struct list_head *pos, *n;
+	__u32 now_time = jiffies;
+
+	list_for_each_safe(pos, n, &gl_infp.dev_list)
+	{
+		cli = list_entry(pos, infp_cli_t, list_to);
+		if(now_time - cli->uptime > 180 * HZ)
+		{
+			infp_del_cli(cli);
+		}
+	}
+
+	mod_timer(&gl_infp.timer, jiffies + HZ);
+}
 
 int infp_init(void)
 {
 	int i = 0;
+
+	// 初始化jiffies
+	init_timer_module();
+
+	init_timer(&gl_infp.timer);
+	gl_infp.timer.function = infp_timeout;
+	add_timer(&gl_infp.timer);
 
 	//初始化链表
 	INIT_LIST_HEAD(&gl_infp.dev_list);
@@ -79,52 +108,54 @@ void infp_main_recv(sock_t* sock)
 	}
 }
 
-void infp_poll_run(void)
+int infp_poll_run(int timeout)
 {
+	int ret = -1;
 	int nready = 0, i = 0;
-	while(1)
+	nready = poll(poll_arr, curfds, timeout);
+	if (nready == -1)
 	{
-		nready = poll(poll_arr, curfds, 30);
-		if (nready == -1)
-		{
-			perror("poll error:");
-			abort();
-		}
-
-		for(i = 0; i < curfds; i++)
-		{
-			if(poll_arr[i].fd == gl_infp.main_sock.fd
-				|| poll_arr[i].fd == gl_infp.back_sock.fd)
-			{
-				if(poll_arr[i].events & POLLIN)
-				{
-					sock_t *sock = NULL;
-					if(poll_arr[i].fd == gl_infp.main_sock.fd)
-						sock = &gl_infp.main_sock;
-					else if(poll_arr[i].fd == gl_infp.main_sock.fd)
-						sock = &gl_infp.back_sock;
-					else
-						return;	// 没这种情况
-
-					infp_main_recv(sock);
-				}
-
-				// 没有POLLOUT这个说法, 直接sendto
-				if(poll_arr[i].events & POLLERR)
-				{
-					return;
-				}
-			}
-			else
-			{
-				printf("???\n");
-				return;
-			}
-
-			if(--nready <= 0)
-				break;
-		}
+		perror("poll error:");
+		abort();
 	}
+
+	for(i = 0; i < curfds; i++)
+	{
+		if(poll_arr[i].fd == gl_infp.main_sock.fd
+			|| poll_arr[i].fd == gl_infp.back_sock.fd)
+		{
+			if(poll_arr[i].events & POLLIN)
+			{
+				sock_t *sock = NULL;
+				if(poll_arr[i].fd == gl_infp.main_sock.fd)
+					sock = &gl_infp.main_sock;
+				else if(poll_arr[i].fd == gl_infp.main_sock.fd)
+					sock = &gl_infp.back_sock;
+				else
+					goto out;	// 没这种情况
+
+				infp_main_recv(sock);
+			}
+
+			// 没有POLLOUT这个说法, 直接sendto
+			if(poll_arr[i].events & POLLERR)
+			{
+				goto out;
+			}
+		}
+		else
+		{
+			printf("???\n");
+			goto out;
+		}
+
+		if(--nready <= 0)
+			break;
+	}
+
+	ret = 0;
+out:
+	return ret;
 }
 
 int main(int argc, char *argv[])
@@ -140,7 +171,13 @@ int main(int argc, char *argv[])
 		printf("init_poll failed\n");
 	}
 
-	infp_poll_run();
+	while(1)
+	{
+		if(infp_poll_run(30))
+			break;
+
+		run_timer_list();
+	}
 OUT:
 	return 0;
 }

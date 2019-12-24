@@ -2,6 +2,7 @@
 #define __MEM_H__
 
 #include "stdlib.h"
+#include "string.h"
 
 static inline void* mem_malloc(__u32 size)
 {

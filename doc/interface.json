@@ -23,8 +23,9 @@ S->P: 登陆回应
 P->S: 心跳
 {
 	"cmd":"heart_beat",
-	"dst_ip":"192.168.1.5",	// 连通的才发
-	"name":"Shadowbringers" // 连通的才发
+	"ip":"192.168.1.5",
+	"name":"Shadowbringers",
+	"connected":"1" // 有没有连人
 }
 
 S->P: 心跳回应
@@ -56,8 +57,10 @@ S->P: nat回应
 P->S: 代理请求
 {
 	"cmd":"proxy_request",
+	"ip":"192.168.1.5",
+	"name":"Lightbringers"
 	"dst_ip":"192.168.1.5",
-	"name":"Shadowbringers"
+	"dst_name":"Shadowbringers"
 }
 
 S->P: 代理回应
@@ -65,7 +68,6 @@ S->P: 代理回应
 	"cmd":"proxy_ack",
 	"ret":0,
 	"msg":"ok",
-	"mode":"wait|guess" // wait: 等待代理命令, guess: 进行端口猜测
 }
 
 P->S: 端口猜测
@@ -75,6 +77,8 @@ P->S: 端口猜测
 	"port":"45124",
 	"num":"0",	// 序号,第一个包还是第二个包,连续发两个，用于端口预测
 	"name":"Shadowbringers"
+	"dst_ip":"192.168.1.5",
+	"dst_name":"Lightbringers"
 }
 
 S->P: 代理命令下发 (作为"get_nat_port"的回应包)
@@ -90,7 +94,9 @@ P->S: 代理情况回应
 {
 	"cmd":"proxy_task_ack",
 	"ret":0,
-	"msg":"ok"
+	"msg":"ok",
+	"ip":"192.168.1.5",
+	"name":"Shadowbringers"
 }
 
 

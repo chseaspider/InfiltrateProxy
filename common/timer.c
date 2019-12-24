@@ -37,7 +37,7 @@ static struct timer_vec * const tvecs[] = {
 }; 
 #define NOOF_TVECS (sizeof(tvecs) / sizeof(tvecs[0]))
 
-unsigned long init_jiffies(void)
+void init_jiffies(void)
 {
 	// TODO: 系统时间修改之后……咳咳
 	gettimeofday(&__start,NULL);
@@ -108,7 +108,6 @@ static inline void internal_add_timer(struct timer_list *timer)
 
 void add_timer(struct timer_list *timer) 
 {
-	unsigned long flags;
 	if (timer_pending(timer))
 	{
 		CYM_LOG(LV_WARNING, "add timer failed, timer is pending\n");
@@ -130,7 +129,6 @@ static inline int detach_timer(struct timer_list *timer)
 int mod_timer(struct timer_list *timer, unsigned long expires)
 {
 	int ret;
-	unsigned long flags;
 	timer->expires = expires;
 	ret = detach_timer(timer);
 	internal_add_timer(timer);
@@ -140,7 +138,6 @@ int mod_timer(struct timer_list *timer, unsigned long expires)
 int del_timer(struct timer_list * timer)
 {
 	int ret;
-	unsigned long flags;
 
 	ret = detach_timer(timer); 
 	timer->list.next = timer->list.prev = NULL;
@@ -167,7 +164,7 @@ static inline void cascade_timers(struct timer_vec *tv)
 	tv->index = (tv->index + 1) & TVN_MASK;
 }
 
-static inline void run_timer_list(void)
+void run_timer_list(void)
 {
 	unsigned long _jiffies = jiffies;
 	while ((long)(_jiffies - timer_jiffies) >= 0) {

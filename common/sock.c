@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <string.h>
-#include <netinet/in.h>
 
 #include "sock.h"
 #include "mem.h"
@@ -113,7 +112,7 @@ int udp_sock_recv(sock_t *sock, struct sockaddr_in *addr)
 	int ret = 0;
 	socklen_t addr_len = sizeof(*addr);
 
-	while(sock->recv_buf_len -sock->recv_len < SOCK_BUF_LEN)
+	while(sock->recv_buf_len - sock->recv_len < SOCK_BUF_LEN)
 	{
 		sock->recv_buf = mem_realloc(sock->recv_buf, sock->recv_buf_len + SOCK_BUF_LEN);
 		if(!sock->recv_buf)
@@ -125,7 +124,7 @@ int udp_sock_recv(sock_t *sock, struct sockaddr_in *addr)
 		sock->recv_buf_len += SOCK_BUF_LEN;
 	}
 
-	ret = recvform(sock->fd, sock->recv_buf+sock->recv_len, SOCK_BUF_LEN, 0, (struct sockaddr *)addr, addr_len);
+	ret = recvfrom(sock->fd, sock->recv_buf+sock->recv_len, SOCK_BUF_LEN, 0, (struct sockaddr *)addr, &addr_len);
 
 	return ret;
 }

@@ -12,8 +12,11 @@ struct timer_list {
 };
 
 unsigned long jiffies_get(void);
-unsigned long init_jiffies(void);
-void init_timervecs(void);
+void init_timer_module(void);
+int mod_timer(struct timer_list * timer, unsigned long expires);
+void add_timer(struct timer_list * timer);
+void run_timer_list(void);
+
 
 #define jiffies jiffies_get()
 

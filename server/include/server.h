@@ -2,6 +2,7 @@
 #define __SERVER_H__
 
 #include "list.h"
+#include "timer.h"
 #include "sock.h"
 
 #define INFP_HASH_MAX 0x100
@@ -18,6 +19,7 @@ typedef struct infp_s
 
 	struct list_head dev_list;
 	struct hlist_head dev_hash[INFP_HASH_MAX];
+	struct timer_list timer;	// 1秒1次的timer
 }infp_t;
 
 typedef struct infp_port_s
@@ -36,20 +38,21 @@ typedef struct infp_cli_s
 
 	infp_port_t main_port;	// 与服务器主连接的端口信息
 	infp_port_t guess[2];	// 用于端口预测(仅支持等差数列的情况)
+	__u32 guess_port;	/* 猜测的下一个端口(nat_type 为 SYMMETRICAL_NAT_TYPE才使用)
+							其他情况,使用guess[0].nat_port
+						*/
 
 	__u8 nat_type;		// nat类型 @see C_NAT_TYPE
 	__u8 mode;			// 0: 客户端 1: PC端
 	__u8 failed_count;	// 打洞失败次数
-	__u8 pad;
+	__u8 connected;		// 有木有连人
 
 	__u32 uptime;		// 更新时间 jiffies
-
-	char dst_ip[32];	// 访问的目标IP
-	char dst_name[32];	// 访问的目标名称
-	char dst_des[64];	// 访问的目标标识(IP+名称)
 
 	struct list_head list_to;	// 关联infp_t.dev_list
 	struct hlist_node hash_to;	// 关联infp_t.dev_hash ip+name作为hash值
 }infp_cli_t;
+
+extern infp_t gl_infp;
 
 #endif // __SERVER_H__
