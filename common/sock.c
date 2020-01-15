@@ -5,6 +5,62 @@
 #include "mem.h"
 
 #define SOCK_BUF_LEN 102400
+#define GET_GATEWAY_CMD "route | grep 'default' | awk '{print $8}'"
+
+int get_gateway_devname(char *gate)
+{
+	FILE *fp = NULL;
+	char temp[20] = {0};
+	int i = 0;
+
+	fp = popen(GET_GATEWAY_CMD, "r");
+	if (fp == NULL)
+	{
+		perror("popen:");
+		return -1;
+	}
+	else
+	{
+		if (fread(temp, sizeof(char), sizeof(temp), fp) == -1)
+		{
+			perror("fread:");
+		}
+	}
+
+	pclose(fp);
+
+	while (temp[i] != '\n') {
+		i++;
+	}
+	temp[i] = '\0';
+
+	memcpy(gate, temp, strlen(temp));
+
+	return 0;
+}
+
+__u32 get_default_local_ip(void)
+{
+	static __u32 ip = 0;
+	char dev[32];
+	int inet_sock;
+	struct ifreq ifr;
+	char ip[32]={0};
+
+	if(ip)
+		return ip;
+
+	if(get_gateway_devname(dev))
+		return 0;
+
+	inet_sock = socket(AF_INET, SOCK_DGRAM, 0);
+	strcpy(ifr.ifr_name, dev);
+	ioctl(inet_sock, SIOCGIFADDR, &ifr);
+
+	ip = ((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr;
+
+	return ip;
+}
 
 int sock_add_poll(struct pollfd* _poll, int max, sock_t* sock)
 {

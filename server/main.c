@@ -129,7 +129,7 @@ int infp_poll_run(int timeout)
 				sock_t *sock = NULL;
 				if(poll_arr[i].fd == gl_infp.main_sock.fd)
 					sock = &gl_infp.main_sock;
-				else if(poll_arr[i].fd == gl_infp.main_sock.fd)
+				else if(poll_arr[i].fd == gl_infp.back_sock.fd)
 					sock = &gl_infp.back_sock;
 				else
 					goto out;	// 没这种情况

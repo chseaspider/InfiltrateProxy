@@ -76,7 +76,7 @@ P->S: 端口猜测
 	"ip":"192.168.1.5",
 	"port":"45124",
 	"num":"0",	// 序号,第一个包还是第二个包,连续发两个，用于端口预测
-	"name":"Shadowbringers"
+	"name":"Shadowbringers",
 	"dst_ip":"192.168.1.5",
 	"dst_name":"Lightbringers"
 }
