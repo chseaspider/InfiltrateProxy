@@ -33,11 +33,11 @@ typedef struct cli_infp_s
 
 	__u16 main_port;		// 与服务器连接的主端口, 主连接用
 	__u16 back_port[2];		// 用于检测NAT类型用的端口, 临时开
-	__u16 proxy_port;		// 准备的代理端口
+	__u16 proxy_port[3];	// 准备的代理端口
 
 	sock_t main_sock;		// 对应main_port
 	sock_t back_sock[2];	// 对应back_port
-	sock_t proxy_sock;		// 对应proxy_port (代理主连接)
+	sock_t proxy_sock[3];	// 对应proxy_port (代理主连接)
 
 	__u32 nat_type;			// @see C_NAT_TYPE
 	__u8  name[32];			// 客户端标识

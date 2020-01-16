@@ -214,10 +214,36 @@ int create_udp(sock_t *sock, __u32 ip, __u16 port)
 	if(bind(sock->fd, (struct sockaddr *)&addr, addr_len) < 0)
 	{
 		perror("bind:");
+		close(sock->fd);
+		sock->fd = -1;
 		return -1;
 	}
 
 	return sock->fd;
+}
+
+void close_sock(sock_t *sock)
+{
+	if(sock->fd <= 0)
+		goto OUT;
+
+	close(sock->fd);
+	if(sock->recv_buf)
+	{
+		mem_free(sock->recv_buf);
+		sock->recv_buf = NULL;
+	}
+
+	if(sock->send_buf)
+	{
+		mem_free(sock->send_buf);
+		sock->send_buf = NULL;
+	}
+
+	memset(sock, 0, sizeof(sock_t));
+
+OUT:
+	sock->fd = -1;
 }
 
 

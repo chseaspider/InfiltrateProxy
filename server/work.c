@@ -157,8 +157,8 @@ int cli_send_nat_type_ack(infp_cli_t* cli, sock_t *sock, __u16 port)
 {
 	char send_buf[1024];
 	int len = snprintf(send_buf, sizeof(send_buf)
-					, "{\"cmd\":\"nat_type_ack\",\"ip\":\"%s\",\"port\":\"%d\""
-					"\"type\":\"%d\",\"ret\":0,\"msg\":\"ok\"}"
+					, "{\"cmd\":\"nat_type_ack\",\"ip\":\"%s\",\"port\":%d"
+					"\"type\":%d,\"ret\":0,\"msg\":\"ok\"}"
 					, IpToStr(cli->nat_ip)
 					, port, cli->nat_type
 					);
@@ -522,6 +522,7 @@ int infp_recv_do(sock_t *sock, struct sockaddr_in *addr)
 	}
 
 	memset(sock->recv_buf, 0, sock->recv_buf_len);
+	sock->recv_len = 0;
 	return ret;
 }
 

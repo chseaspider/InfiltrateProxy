@@ -70,6 +70,9 @@ S->P: 代理回应
 	"msg":"ok",
 }
 
+// 收到proxy_ack后绑定仨连续端口
+// 连续俩get_nat_port包给服务器先
+// 第仨端口用来穿
 P->S: 端口猜测
 {
 	"cmd":"get_nat_port",

@@ -60,6 +60,7 @@ int infp_init(void)
 
 	init_timer(&gl_cli_infp.timer);
 	gl_cli_infp.timer.function = infp_timeout;
+	gl_cli_infp.timer.data = (unsigned long)&gl_cli_infp;
 	add_timer(&gl_cli_infp.timer);
 
 	//初始化sock
@@ -70,14 +71,11 @@ int infp_init(void)
 	{
 		if(try_times++ > 50)
 		{
+			CYM_LOG(LV_ERROR, "out of udp port???\n");
 			return -1;
 		}
 
-		if(gl_cli_infp.main_sock.fd > 0)
-		{
-			close(gl_cli_infp.main_sock.fd);
-			gl_cli_infp.main_sock.fd = -1;
-		}
+		gl_cli_infp.main_port = (rand() % 35535) + 12000;
 	}
 	// 设置非阻塞
 	set_sock_nonblock(gl_cli_infp.main_sock.fd);

@@ -94,7 +94,7 @@ int create_udp(sock_t *sock, __u32 ip, __u16 port);
 int udp_sock_recv(sock_t * sock, struct sockaddr_in * addr);
 int udp_sock_send(sock_t * sock, void * data, int data_len, __u32 ip, __u16 port);
 void set_sockaddr_in(struct sockaddr_in *addr, __u32 ip, __u16 port);
-
+void close_sock(sock_t *sock);
 
 #endif
 
