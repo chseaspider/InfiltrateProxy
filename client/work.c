@@ -1,4 +1,32 @@
+/*
+Copyright 2020 chseasipder
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+#include <stdlib.h>
+#include <unistd.h>
+
 #include "work.h"
+#include "cJSON.h"
+#include "debug.h"
+
+void memxor(char* data, int len)
+{
+	int i = 0;
+	for(i = 0; i < len; i++)
+		data[i] ^= 0x71;
+}
 
 int cli_infp_send(__u32 ip, __u16 port, sock_t* sock, char *data, int len)
 {
@@ -21,7 +49,21 @@ int cli_infp_send_login(sock_t* sock, cli_infp_t* infp)
 					"\"mode\":\"%s\",\"name\":\"%s\"}"
 					, IpToStr(local_ip)
 					, infp->main_port
-					, infp->mode
+					, infp->mode ? "client" : "host"
+					, infp->name
+					);
+
+	return cli_infp_send(infp->server_ip, infp->svr_m_port, sock, send_buf, len);
+}
+
+int cli_infp_send_heart(sock_t* sock, cli_infp_t* infp)
+{
+	char send_buf[1024];
+	__u32 local_ip = get_default_local_ip();
+
+	int len = snprintf(send_buf, sizeof(send_buf)
+					, "{\"cmd\":\"heart_beat\",\"ip\":\"%s\",\"name\":\"%s\"}"
+					, IpToStr(local_ip)
 					, infp->name
 					);
 
@@ -55,9 +97,10 @@ int cli_infp_do_login_ack(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 		CYM_LOG(LV_ERROR, "parse next_hb failed\n");
 		goto out;
 	}
+	next_hb = atoi(j_value->valuestring);
 
 	gl_cli_infp.state = CLI_INFP_LOGIN;
-	gl_cli_infp.next_hb = jiffies + 60 * HZ;
+	gl_cli_infp.next_hb = jiffies + next_hb * HZ;
 
 	cli_infp_send_get_nat_type(sock, &gl_cli_infp);
 	ret = 0;
@@ -77,8 +120,9 @@ int cli_infp_do_heart_ack(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 		CYM_LOG(LV_ERROR, "parse next_hb failed\n");
 		goto out;
 	}
+	next_hb = atoi(j_value->valuestring);
 
-	gl_cli_infp.next_hb = jiffies + 60 * HZ;
+	gl_cli_infp.next_hb = jiffies + next_hb * HZ;
 
 	ret = 0;
 out:
@@ -118,7 +162,8 @@ int cli_infp_do_nat_type_ack(cJSON* root, struct sockaddr_in *addr, sock_t *sock
 
 	CYM_LOG(LV_INFO, "nat_type = %d\n", gl_cli_infp.nat_type);
 
-	cli_infp_send_proxy_request(sock, &gl_cli_infp);
+	if(gl_cli_infp.mode && strlen(gl_cli_infp.dst.ip))
+		cli_infp_send_proxy_request(sock, &gl_cli_infp);
 
 	ret = 0;
 out:
@@ -180,20 +225,21 @@ try_bind:
 	for(i = 0; i < 2; i++)
 	{
 		gl_cli_infp.back_port[i] = port + i;
-		if(create_udp(&gl_cli_infp.back_sock[i], 0, htons(gl_cli_infp.back_port[i]))
+		if(create_udp(&gl_cli_infp.back_sock[i], 0, htons(gl_cli_infp.back_port[i])) < 0)
 			goto try_bind;
 	}
 
 	for(i = 0; i < 3; i++)
 	{
 		gl_cli_infp.proxy_port[i] = port + i + 2;
-		if(create_udp(&gl_cli_infp.proxy_sock[i], 0, htons(gl_cli_infp.proxy_port[i])))
+		if(create_udp(&gl_cli_infp.proxy_sock[i], 0, htons(gl_cli_infp.proxy_port[i])) < 0)
 			goto try_bind;
 	}
 
 	cli_infp_send_get_nat_port(&gl_cli_infp.back_sock[0], infp, 0);
 	cli_infp_send_get_nat_port(&gl_cli_infp.back_sock[1], infp, 1);
 // 需统计与服务器延迟, 然后在此处进行回应包的收取
+	return 0;
 }
 
 int cli_infp_do_proxy_ack(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
@@ -230,8 +276,8 @@ void cli_infp_recv_print(sock_t* sock)
 	// 总会收包报错的
 	while(udp_sock_recv(sock, &addr) > 0)
 	{
-		print("%s\n",sock->recv_buf);
-		memset(sock->recv_buf, 0, sizeof(sock->recv_buf));
+		printf("%s\n",sock->recv_buf);
+		memset(sock->recv_buf, 0, sock->recv_buf_len);
 		sock->recv_len = 0;
 	}
 }
@@ -259,6 +305,8 @@ int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u
 		for(i = 0; i < offset; i++)
 			cli_infp_recv_print(&infp->proxy_sock[i]);
 	}
+
+	return 0;
 }
 
 int cli_infp_do_proxy_task(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
@@ -335,6 +383,7 @@ int cli_infp_recv_do(sock_t *sock, struct sockaddr_in *addr)
 			if(!j_value || j_value->valueint != 0)
 			{
 				CYM_LOG(LV_WARNING, "ret error, data:\n%s\n", sock->recv_buf);
+				goto next;
 			}
 
 			j_value = cJSON_GetObjectItem(root, "cmd");

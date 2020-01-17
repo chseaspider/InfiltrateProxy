@@ -1,3 +1,19 @@
+/*
+Copyright 2020 chseasipder
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,7 +27,7 @@
 #include "server.h"
 #include "work.h"
 
-int debug_level = 0;
+int debug_level = 10;
 
 #define INFP_DEFAFULT_PORT 45124 // TODO: 配置文件获取
 #define INFP_POLL_MAX 20		// 随手写的, 目前只监听12个端口
@@ -61,12 +77,12 @@ int infp_init(void)
 	gl_infp.back_port = INFP_DEFAFULT_PORT + 1;
 
 	//初始化sock
-	if(create_udp(&gl_infp.main_sock, 0, htons(gl_infp.main_port)))
+	if(create_udp(&gl_infp.main_sock, 0, htons(gl_infp.main_port)) < 0)
 		return -1;
 	// 设置非阻塞
 	set_sock_nonblock(gl_infp.main_sock.fd);
 
-	if(create_udp(&gl_infp.back_sock, 0, htons(gl_infp.back_port)))
+	if(create_udp(&gl_infp.back_sock, 0, htons(gl_infp.back_port)) < 0)
 		return -1;
 	// 设置非阻塞
 	set_sock_nonblock(gl_infp.back_sock.fd);

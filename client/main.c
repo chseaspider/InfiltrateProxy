@@ -1,3 +1,19 @@
+/*
+Copyright 2020 chseasipder
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,10 +24,11 @@
 #include "c_type.h"
 #include "sock.h"
 
+#include "debug.h"
 #include "client.h"
 #include "work.h"
 
-int debug_level = 0;
+int debug_level = 10;
 
 #define INFP_POLL_MAX 20		// 随手写的, 目前只监听12个端口
 
@@ -36,15 +53,16 @@ void infp_timeout(unsigned long data)
 	case CLI_INFP_CONNECT:
 		if(jiffies - infp->dst.uptime > 10 * HZ)
 		{
-			cli_infp_keep_connect();
+			// TODO
+			//cli_infp_keep_connect();
 		}
 	case CLI_INFP_LOGIN:
 		{
-			cli_infp_send_heart();
+			cli_infp_send_heart(&infp->main_sock, infp);
 		}
 		break;
 	default:
-		CYM_LOG("???\n");
+		CYM_LOG(LV_ERROR, "???\n");
 	}
 
 	mod_timer(&gl_cli_infp.timer, jiffies + HZ);
@@ -52,23 +70,33 @@ void infp_timeout(unsigned long data)
 
 int infp_init(void)
 {
-	int i = 0;
 	int try_times = 0;
 
 	// 初始化jiffies
 	init_timer_module();
+
+	// TODO: modify default server info
+	gl_cli_infp.server_ip = StrToIp("106.13.47.75");
+	gl_cli_infp.svr_m_port = htons(INFP_DEFAFULT_PORT);
+	gl_cli_infp.svr_b_port = htons(INFP_DEFAFULT_PORT+1);
 
 	init_timer(&gl_cli_infp.timer);
 	gl_cli_infp.timer.function = infp_timeout;
 	gl_cli_infp.timer.data = (unsigned long)&gl_cli_infp;
 	add_timer(&gl_cli_infp.timer);
 
+	if(gl_cli_infp.mode)
+	{
+		snprintf(gl_cli_infp.dst.ip, sizeof(gl_cli_infp.dst.ip), "192.168.3.14");
+	}
+
 	//初始化sock
 	gl_cli_infp.main_sock.fd = -1;
 	gl_cli_infp.main_port = (rand() % 35535) + 12000;
 	try_times = 0;
-	while(create_udp(&gl_cli_infp.main_sock, 0, htons(gl_cli_infp.main_port)))
+	while(create_udp(&gl_cli_infp.main_sock, 0, htons(gl_cli_infp.main_port)) < 0)
 	{
+		CYM_LOG(LV_WARNING, "bind port %d failed\n", gl_cli_infp.main_port);
 		if(try_times++ > 50)
 		{
 			CYM_LOG(LV_ERROR, "out of udp port???\n");
@@ -156,6 +184,9 @@ out:
 
 int main(int argc, char *argv[])
 {
+	if(argc > 2)
+		gl_cli_infp.mode = !!atoi(argv[2]);
+
 	if(infp_init())
 	{
 		printf("infp_init failed\n");
@@ -167,7 +198,7 @@ int main(int argc, char *argv[])
 		printf("init_poll failed\n");
 	}
 
-	cli_infp_send_login();
+	cli_infp_send_login(&gl_cli_infp.main_sock, &gl_cli_infp);
 
 	while(1)
 	{
