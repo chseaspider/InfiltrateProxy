@@ -58,7 +58,7 @@ int get_gateway_devname(char *gate)
 __u32 get_default_local_ip(void)
 {
 	static __u32 ip = 0;
-	char dev[32];
+	char dev[32] = {0};
 	int inet_sock;
 	struct ifreq ifr = {};
 
@@ -74,6 +74,7 @@ __u32 get_default_local_ip(void)
 
 	memcpy(&ip, &((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr, sizeof(ip));
 
+	close(inet_sock);
 	return ip;
 }
 
@@ -89,12 +90,13 @@ int sock_add_poll(struct pollfd* _poll, int max, sock_t* sock)
 			sock->poll_i = i;
 			poll_add_read(&_poll[i]);
 			found = 1;
+			break;
 		}
 	}
 
 	if(found)
 	{
-		for(i = max; i >= 0; i--)
+		for(i = max - 1; i >= 0; i--)
 		{
 			if(_poll[i].fd != -1)
 			{
@@ -196,7 +198,10 @@ int udp_sock_recv(sock_t *sock, struct sockaddr_in *addr)
 	}
 
 	ret = recvfrom(sock->fd, sock->recv_buf+sock->recv_len, SOCK_BUF_LEN, 0, (struct sockaddr *)addr, &addr_len);
-
+	if(ret > 0)
+	{
+		sock->recv_len += ret;
+	}
 	return ret;
 }
 
@@ -233,6 +238,8 @@ int create_udp(sock_t *sock, __u32 ip, __u16 port)
 		sock->fd = -1;
 		return -1;
 	}
+
+	printf("bind %s:%d ok\n", IpToStr(ip), ntohs(port));
 
 	return sock->fd;
 }

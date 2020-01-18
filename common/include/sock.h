@@ -96,7 +96,7 @@ static inline __u32 StrToIp(char *str)
 	union {
 		struct in_addr ipaddr;
 		__u32 ip;
-	}addr = {0};
+	}addr = {};
 	inet_aton(str, &addr.ipaddr);
 	return addr.ip;
 }

@@ -57,6 +57,7 @@ void infp_timeout(unsigned long data)
 			//cli_infp_keep_connect();
 		}
 	case CLI_INFP_LOGIN:
+		if(jiffies > infp->next_hb)
 		{
 			cli_infp_send_heart(&infp->main_sock, infp);
 		}
@@ -76,7 +77,7 @@ int infp_init(void)
 	init_timer_module();
 
 	// TODO: modify default server info
-	gl_cli_infp.server_ip = StrToIp("106.13.47.75");
+	gl_cli_infp.server_ip = StrToIp("192.168.25.101");
 	gl_cli_infp.svr_m_port = htons(INFP_DEFAFULT_PORT);
 	gl_cli_infp.svr_b_port = htons(INFP_DEFAFULT_PORT+1);
 
@@ -87,7 +88,7 @@ int infp_init(void)
 
 	if(gl_cli_infp.mode)
 	{
-		snprintf(gl_cli_infp.dst.ip, sizeof(gl_cli_infp.dst.ip), "192.168.3.14");
+		snprintf(gl_cli_infp.dst.ip, sizeof(gl_cli_infp.dst.ip), "192.168.25.101");
 	}
 
 	//初始化sock
@@ -115,28 +116,32 @@ int init_poll(void)
 {
 	int i;
 	memset(poll_arr, 0, sizeof(poll_arr));
-	curfds = sock_add_poll(&poll_arr[0], INFP_POLL_MAX, &gl_cli_infp.main_sock);
+	for(i = 0; i < INFP_POLL_MAX; i++)
+	{
+		poll_arr[i].fd = -1;
+	}
+
+	curfds = sock_add_poll(poll_arr, INFP_POLL_MAX, &gl_cli_infp.main_sock);
 	if(curfds < 0)
 	{
 		return -1;
 	}
 
-	for(i = 1; i < INFP_POLL_MAX; i++)
-	{
-		poll_arr[i].fd = -1;
-	}
-
 	return 0;
 }
 
-void infp_main_recv(sock_t* sock)
+int infp_main_recv(sock_t* sock)
 {
 	struct sockaddr_in addr;
+	int ret = 0;
 	// 总会收包报错的
 	while(udp_sock_recv(sock, &addr) > 0)
 	{
 		cli_infp_recv_do(sock, &addr);
+		ret = 1;
 	}
+
+	return ret;
 }
 
 int infp_poll_run(int timeout)
@@ -158,7 +163,11 @@ int infp_poll_run(int timeout)
 			{
 				sock_t *sock = &gl_cli_infp.main_sock;
 
-				infp_main_recv(sock);
+				if(infp_main_recv(sock))
+				{
+					if(--nready <= 0)
+						break;
+				}
 			}
 
 			// 没有POLLOUT这个说法, 直接sendto
@@ -172,9 +181,6 @@ int infp_poll_run(int timeout)
 			printf("???\n");
 			goto out;
 		}
-
-		if(--nready <= 0)
-			break;
 	}
 
 	ret = 0;
@@ -184,8 +190,10 @@ out:
 
 int main(int argc, char *argv[])
 {
-	if(argc > 2)
-		gl_cli_infp.mode = !!atoi(argv[2]);
+	if(argc > 1)
+		gl_cli_infp.mode = !!atoi(argv[1]);
+
+	CYM_LOG(LV_QUIET, "start\n");
 
 	if(infp_init())
 	{
@@ -196,10 +204,13 @@ int main(int argc, char *argv[])
 	if(init_poll())
 	{
 		printf("init_poll failed\n");
+		goto OUT;
 	}
 
-	cli_infp_send_login(&gl_cli_infp.main_sock, &gl_cli_infp);
+	// 第一个timer里发
+	//cli_infp_send_login(&gl_cli_infp.main_sock, &gl_cli_infp);
 
+	CYM_LOG(LV_QUIET, "init ok\n");
 	while(1)
 	{
 		if(infp_poll_run(30))

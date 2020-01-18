@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "server.h"
 #include "work.h"
+#include "debug.h"
 
 int debug_level = 10;
 
@@ -94,34 +95,39 @@ int init_poll(void)
 {
 	int i;
 	memset(poll_arr, 0, sizeof(poll_arr));
-	curfds = sock_add_poll(&poll_arr[0], INFP_POLL_MAX, &gl_infp.main_sock);
-	if(curfds < 0)
-	{
-		return -1;
-	}
 
-	curfds = sock_add_poll(&poll_arr[1], INFP_POLL_MAX, &gl_infp.back_sock);
-	if(curfds < 0)
-	{
-		return -1;
-	}
-
-	for(i = 2; i < INFP_POLL_MAX; i++)
+	for(i = 0; i < INFP_POLL_MAX; i++)
 	{
 		poll_arr[i].fd = -1;
+	}
+
+	curfds = sock_add_poll(poll_arr, INFP_POLL_MAX, &gl_infp.main_sock);
+	if(curfds < 0)
+	{
+		return -1;
+	}
+
+	curfds = sock_add_poll(poll_arr, INFP_POLL_MAX, &gl_infp.back_sock);
+	if(curfds < 0)
+	{
+		return -1;
 	}
 
 	return 0;
 }
 
-void infp_main_recv(sock_t* sock)
+int infp_main_recv(sock_t* sock)
 {
 	struct sockaddr_in addr;
+	int ret = 0;
 	// 总会收包报错的
 	while(udp_sock_recv(sock, &addr) > 0)
 	{
 		infp_recv_do(sock, &addr);
+		ret = 1;
 	}
+
+	return ret;
 }
 
 int infp_poll_run(int timeout)
@@ -150,7 +156,11 @@ int infp_poll_run(int timeout)
 				else
 					goto out;	// 没这种情况
 
-				infp_main_recv(sock);
+				if(infp_main_recv(sock))
+				{
+					if(--nready <= 0)
+						break;
+				}
 			}
 
 			// 没有POLLOUT这个说法, 直接sendto
@@ -164,9 +174,6 @@ int infp_poll_run(int timeout)
 			printf("???\n");
 			goto out;
 		}
-
-		if(--nready <= 0)
-			break;
 	}
 
 	ret = 0;
@@ -176,6 +183,8 @@ out:
 
 int main(int argc, char *argv[])
 {
+	CYM_LOG(LV_QUIET, "start\n");
+
 	if(infp_init())
 	{
 		printf("infp_init failed\n");
@@ -185,8 +194,10 @@ int main(int argc, char *argv[])
 	if(init_poll())
 	{
 		printf("init_poll failed\n");
+		goto OUT;
 	}
 
+	CYM_LOG(LV_QUIET, "init ok\n");
 	while(1)
 	{
 		if(infp_poll_run(30))

@@ -1,4 +1,7 @@
 #include <sys/time.h>
+#include <time.h>
+#include <stdlib.h>
+
 
 #include "debug.h"
 #include "timer.h"
@@ -33,7 +36,7 @@ static struct timeval __start;
 static unsigned long timer_jiffies;
 
 static struct timer_vec * const tvecs[] = { 
-	(struct timer_vec *)&tv1, &tv2, &tv3, &tv4, &tv5 
+	(void *)&tv1, &tv2, &tv3, &tv4, &tv5 
 }; 
 #define NOOF_TVECS (sizeof(tvecs) / sizeof(tvecs[0]))
 
@@ -74,6 +77,7 @@ void init_timer_module(void)
 {
 	init_jiffies();
 	init_timervecs();
+	srand(time(NULL));
 }
 
 static inline void internal_add_timer(struct timer_list *timer)

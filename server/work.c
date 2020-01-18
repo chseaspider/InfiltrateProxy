@@ -34,6 +34,7 @@ int infp_server_send(infp_cli_t *cli, sock_t* sock, char *data, int len)
 	int socklen = sizeof(addr);
 
 	set_sockaddr_in(&addr, cli->nat_ip, htons(cli->main_port.nat_port));
+	CYM_LOG(LV_DEBUG, "send [%s]\n", data);
 	memxor(data, len);
 
 	return sendto(sock->fd, data, len, 0, (struct sockaddr*)&addr, socklen);
@@ -173,8 +174,8 @@ int cli_send_nat_type_ack(infp_cli_t* cli, sock_t *sock, __u16 port)
 {
 	char send_buf[1024];
 	int len = snprintf(send_buf, sizeof(send_buf)
-					, "{\"cmd\":\"nat_type_ack\",\"ip\":\"%s\",\"port\":%d"
-					"\"type\":%d,\"ret\":0,\"msg\":\"ok\"}"
+					, "{\"cmd\":\"nat_type_ack\",\"ip\":\"%s\",\"port\":\"%d\","
+					"\"type\":\"%d\",\"ret\":0,\"msg\":\"ok\"}"
 					, IpToStr(cli->nat_ip)
 					, port, cli->nat_type
 					);
@@ -182,12 +183,12 @@ int cli_send_nat_type_ack(infp_cli_t* cli, sock_t *sock, __u16 port)
 	return infp_server_send(cli, sock, send_buf, len);
 }
 
-int cli_send_proxy_ack(infp_cli_t* cli, sock_t *sock, int ret, const char *msg)
+int cli_send_proxy_ack(infp_cli_t* cli, infp_cli_t* dst, sock_t *sock, int ret, const char *msg)
 {
 	char send_buf[1024];
 	int len = snprintf(send_buf, sizeof(send_buf)
-					,"{\"cmd\":\"proxy_ack\",\"ret\":%d,\"msg\":\"%s\"}"
-					, ret, msg
+					,"{\"cmd\":\"proxy_ack\",\"ret\":%d,\"msg\":\"%s\",\"dst_ip\":\"%s\",\"dst_name\":\"%s\"}"
+					, ret, msg, dst ? dst->ip : "", dst ? dst->name : ""
 					);
 
 	memset(cli->guess, 0, sizeof(cli->guess));
@@ -202,7 +203,7 @@ int cli_send_proxy_task(infp_cli_t* cli, sock_t *sock, infp_cli_t* dst, int mode
 	char send_buf[1024];
 	int len = snprintf(send_buf, sizeof(send_buf)
 					,"{\"cmd\":\"proxy_task\",\"dst_ip\":\"%s\",\"guess_port\":\"%d\""
-					",\"mode\":\"%d\",\"offset\":\"%d\"}"
+					",\"mode\":\"%d\",\"offset\":\"%d\",\"ret\":0}"
 					, IpToStr(dst->nat_ip)
 					, dst->guess_port
 					, mode
@@ -358,12 +359,12 @@ int infp_do_proxy_request(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 	dst = infp_find_cli_json(root, 1);
 	if(!dst)
 	{
-		cli_send_proxy_ack(cli, sock, 1, "not found");
+		cli_send_proxy_ack(cli, dst, sock, 1, "not found");
 	}
 	else
 	{
-		cli_send_proxy_ack(cli, sock, 0, "ok");
-		cli_send_proxy_ack(dst, sock, 0, "ok");
+		cli_send_proxy_ack(cli, dst, sock, 0, "ok");
+		cli_send_proxy_ack(dst, cli, sock, 0, "ok");
 	}
 
 	ret = 0;
@@ -377,7 +378,8 @@ void infp_guess_port(infp_cli_t *cli)
 	if(cli->nat_type == SYMMETRICAL_NAT_TYPE)
 	{
 		// TODO: 除了等差数列, 还要支持别的
-		cli->guess_port = cli->guess[0].nat_port + (int)((int)cli->guess[1].nat_port - (int)cli->guess[0].nat_port);
+		int temp = (int)((int)cli->guess[1].nat_port - (int)cli->guess[0].nat_port);
+		cli->guess_port = cli->guess[1].nat_port + (temp * 2);	// TODO: optmize
 		CYM_LOG(LV_INFO, "0: %d, 1: %d, guess: %d\n"
 			, cli->guess[0].nat_port, cli->guess[1].nat_port, cli->guess_port);
 	}
@@ -508,6 +510,7 @@ int infp_recv_do(sock_t *sock, struct sockaddr_in *addr)
 	if(sock->recv_buf && sock->recv_len)
 	{
 		memxor(sock->recv_buf, sock->recv_len);
+		CYM_LOG(LV_DEBUG, "recv [%s]\n", sock->recv_buf);
 		cJSON* root = cJSON_Parse(sock->recv_buf);
 		if(root)
 		{
