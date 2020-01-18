@@ -34,10 +34,11 @@ int infp_server_send(infp_cli_t *cli, sock_t* sock, char *data, int len)
 	int socklen = sizeof(addr);
 
 	set_sockaddr_in(&addr, cli->nat_ip, htons(cli->main_port.nat_port));
+	CYM_LOG(LV_DEBUG, "send to %s:%d\n", IpToStr(cli->nat_ip), cli->main_port.nat_port);
 	CYM_LOG(LV_DEBUG, "send [%s]\n", data);
 	memxor(data, len);
 
-	return sendto(sock->fd, data, len, 0, (struct sockaddr*)&addr, socklen);
+	return sendto(gl_infp.main_sock.fd, data, len, 0, (struct sockaddr*)&addr, socklen);
 }
 
 static inline struct hlist_head* infp_get_hash_head(char *str)
