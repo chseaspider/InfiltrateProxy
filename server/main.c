@@ -31,7 +31,7 @@ limitations under the License.
 int debug_level = 10;
 
 #define INFP_DEFAFULT_PORT 45124 // TODO: 配置文件获取
-#define INFP_POLL_MAX 20		// 随手写的, 目前只监听12个端口
+#define INFP_POLL_MAX 0x100		// 
 
 infp_t gl_infp = {};
 struct pollfd poll_arr[INFP_POLL_MAX];
@@ -88,6 +88,9 @@ int infp_init(void)
 	// 设置非阻塞
 	set_sock_nonblock(gl_infp.back_sock.fd);
 
+	if(create_tcp(&gl_infp.tcp_sock, 0, htons(gl_infp.main_port), 1) < 0)
+		return -1;
+
 	return 0;
 }
 
@@ -113,6 +116,12 @@ int init_poll(void)
 		return -1;
 	}
 
+	curfds = sock_add_poll(poll_arr, INFP_POLL_MAX, &gl_infp.tcp_sock);
+	if(curfds < 0)
+	{
+		return -1;
+	}
+
 	return 0;
 }
 
@@ -121,10 +130,9 @@ int infp_main_recv(sock_t* sock)
 	struct sockaddr_in addr;
 	int ret = 0;
 	// 总会收包报错的
-	while(udp_sock_recv(sock, &addr) > 0)
+	while((ret = udp_sock_recv(sock, &addr)) > 0)
 	{
 		infp_recv_do(sock, &addr);
-		ret = 1;
 	}
 
 	return ret;
@@ -169,10 +177,66 @@ int infp_poll_run(int timeout)
 				goto out;
 			}
 		}
+		else if(poll_arr[i].fd == gl_infp.tcp_sock.fd)
+		{
+			sock_t* sock = tcp_accept(&gl_infp.tcp_sock);
+			if(sock)
+			{
+				int ret = sock_add_poll(poll_arr, INFP_POLL_MAX, sock);
+				if(ret < 0)
+				{
+					free_sock(sock);
+					if(--nready <= 0)
+						break;
+
+					continue;
+				}
+				curfds = ret;
+			}
+		}
 		else
 		{
-			printf("???\n");
-			goto out;
+			sock_t* sock = sock_find_fd(poll_arr[i].fd);
+			if(!sock)
+			{
+				close(poll_arr[i].fd);
+				poll_arr[i].fd = INVALID_SOCKET;
+				if(--nready <= 0)
+					break;
+
+				continue;
+			}
+
+			if(poll_arr[i].events & POLLIN)
+			{
+				int ret = infp_main_recv(sock);
+				if(ret > 0)
+				{
+					if(--nready <= 0)
+						break;
+				}
+				else if(ret == 0)
+				{
+					sock_del_poll(poll_arr, INFP_POLL_MAX, sock);
+					free_sock(sock);
+				}
+				else
+				{
+				// TODO: 忽略常见超时错误
+				}
+			}
+
+			// TODO: 发包
+			if(poll_arr[i].events & POLLOUT)
+			{
+				if(--nready <= 0)
+					break;
+			}
+
+			if(poll_arr[i].events & POLLERR)
+			{
+				goto out;
+			}
 		}
 	}
 

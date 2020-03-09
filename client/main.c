@@ -135,10 +135,9 @@ int infp_main_recv(sock_t* sock)
 	struct sockaddr_in addr;
 	int ret = 0;
 	// 总会收包报错的
-	while(udp_sock_recv(sock, &addr) > 0)
+	while((ret = udp_sock_recv(sock, &addr)) > 0)
 	{
 		cli_infp_recv_do(sock, &addr);
-		ret = 1;
 	}
 
 	return ret;

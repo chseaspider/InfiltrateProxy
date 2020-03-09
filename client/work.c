@@ -21,7 +21,7 @@ limitations under the License.
 #include "cJSON.h"
 #include "debug.h"
 
-void memxor(char* data, int len)
+void memxor(unsigned char* data, int len)
 {
 	int i = 0;
 	for(i = 0; i < len; i++)
@@ -36,7 +36,7 @@ int cli_infp_send(__u32 ip, __u16 port, sock_t* sock, char *data, int len)
 
 	set_sockaddr_in(&addr, ip, port);
 	CYM_LOG(LV_DEBUG, "send [%s]\n", data);
-	memxor(data, len);
+	memxor((__u8*)data, len);
 
 	ret = sendto(sock->fd, data, len, 0, (struct sockaddr*)&addr, socklen);
 	return ret;
@@ -368,7 +368,7 @@ int cli_infp_recv_do(sock_t *sock, struct sockaddr_in *addr)
 	{
 		memxor(sock->recv_buf, sock->recv_len);
 		CYM_LOG(LV_DEBUG, "recv [%s]\n", sock->recv_buf);
-		cJSON* root = cJSON_Parse(sock->recv_buf);
+		cJSON* root = cJSON_Parse((char*)sock->recv_buf);
 		if(root)
 		{
 			cJSON* j_value = cJSON_GetObjectItem(root, "ret");

@@ -19,10 +19,46 @@ limitations under the License.
 
 #include "sock.h"
 #include "mem.h"
+#include "debug.h"
 
 #define SOCK_BUF_LEN 102400
 #define GET_GATEWAY_CMD "route | grep 'default' | awk '{print $8}'"
+#define SOCK_HASH_MAX 0x100
+#define SOCK_HASH_MASK 0xff
 
+struct hlist_head sock_hash[SOCK_HASH_MAX];
+int sock_hash_init = 0;
+
+// TODO: thread safe
+void sock_add_hash(sock_t* sock)
+{
+	if(!sock_hash_init)
+	{
+		int i = 0;
+		for(i = 0; i < SOCK_HASH_MAX; i++)
+			INIT_HLIST_HEAD(&sock_hash[i]);
+	}
+
+	// 以防万一, 先删
+	hlist_del_init(&sock->hash_to);
+	hlist_add_head(&sock->hash_to, &sock_hash[BobHash(sock->fd)]);
+}
+
+sock_t* sock_find_fd(int fd)
+{
+	sock_t* sock;
+	struct hlist_head* head = &sock_hash[BobHash(fd)];
+
+	hlist_for_each_entry(sock, head, hash_to)
+	{
+		if(sock->fd == fd)
+			return sock;
+	}
+
+	return NULL;
+}
+
+#if 0
 int get_gateway_devname(char *gate)
 {
 	FILE *fp = NULL;
@@ -54,9 +90,11 @@ int get_gateway_devname(char *gate)
 
 	return 0;
 }
+#endif
 
 __u32 get_default_local_ip(void)
 {
+#if 0
 	static __u32 ip = 0;
 	char dev[32] = {0};
 	int inet_sock;
@@ -76,6 +114,9 @@ __u32 get_default_local_ip(void)
 
 	close(inet_sock);
 	return ip;
+#else
+	return 0;
+#endif
 }
 
 int sock_add_poll(struct pollfd* _poll, int max, sock_t* sock)
@@ -84,7 +125,7 @@ int sock_add_poll(struct pollfd* _poll, int max, sock_t* sock)
 	int i, found = 0;
 	for(i = curfd; i < max; i++)
 	{
-		if(_poll[i].fd == -1)
+		if(_poll[i].fd == INVALID_SOCKET)
 		{
 			_poll[i].fd = sock->fd;
 			sock->poll_i = i;
@@ -98,7 +139,7 @@ int sock_add_poll(struct pollfd* _poll, int max, sock_t* sock)
 	{
 		for(i = max - 1; i >= 0; i--)
 		{
-			if(_poll[i].fd != -1)
+			if(_poll[i].fd != INVALID_SOCKET)
 			{
 				curfd = i;
 				break;
@@ -107,10 +148,10 @@ int sock_add_poll(struct pollfd* _poll, int max, sock_t* sock)
 	}
 	else
 	{
-		printf("poll is full\n");
+		CYM_LOG(LV_FATAL, "poll is full\n");
 	}
 
-	return found ? curfd+1 : -1;
+	return curfd+1;
 }
 
 int sock_del_poll(struct pollfd* _poll, int max, sock_t* sock)
@@ -118,19 +159,33 @@ int sock_del_poll(struct pollfd* _poll, int max, sock_t* sock)
 	int curfd = 0;
 	int i;
 
-	memset(&_poll[sock->poll_i], 0, sizeof(_poll[sock->poll_i]));
-	_poll[sock->poll_i].fd = -1;
-
-	for(i = max; i >= 0; i--)
+	if (sock->poll_i <= 0)
 	{
-		if(_poll[i].fd != -1)
+		CYM_LOG(LV_FATAL, "fd [%d], poll_i [%d] invaild\n", sock->fd, sock->poll_i);
+	}
+	else
+	{
+		memset(&_poll[sock->poll_i], 0, sizeof(_poll[sock->poll_i]));
+		_poll[sock->poll_i].fd = INVALID_SOCKET;
+	}
+
+	for(i = max - 1; i >= 0; i--)
+	{
+		if(_poll[i].fd != INVALID_SOCKET)
 		{
 			curfd = i;
 			break;
 		}
 	}
 
-	return curfd;
+	CYM_LOG(LV_FATAL, "poll fd:");
+	for (i = 0; i < curfd+1; i++)
+	{
+		CYM_LOG(LV_FATAL, "[%d]:%d ", i, _poll[i].fd);
+	}
+	CYM_LOG(LV_FATAL, "\n");
+
+	return curfd + 1;
 }
 
 // IP 网络序, PORT 网络序
@@ -174,7 +229,7 @@ int udp_sock_send(sock_t *sock, void* data, int data_len, __u32 ip, __u16 port)
 
 			sock->send_buf_len += SOCK_BUF_LEN;
 		}
-		memcpy(sock->send_buf+sock->send_len, data+ret, len);
+		memcpy(sock->send_buf+sock->send_len, (char*)data + ret, len);
 	}
 
 	return ret;
@@ -205,22 +260,42 @@ int udp_sock_recv(sock_t *sock, struct sockaddr_in *addr)
 	return ret;
 }
 
+sock_t *tcp_accept(sock_t *sock)
+{
+	struct sockaddr_in addr;
+	socklen_t addr_len = sizeof(addr);
+	sock_t *new_sock = NULL;
+	int fd = accept(sock->fd,(struct sockaddr *)&addr, &addr_len);
+	if(fd < 0)
+	{
+		perror("call to accept");
+		return NULL;
+	}
+	
+	new_sock = mem_malloc(sizeof(sock_t));
+	if(!new_sock)
+	{
+		close(fd);
+		perror("malloc error");
+		return NULL;
+	}
+
+	new_sock->fd = fd;
+	set_sock_timeout(fd, 300);
+	sock_add_hash(sock);
+
+	return sock;
+}
 
 int create_udp(sock_t *sock, __u32 ip, __u16 port)
 {
-	struct sockaddr_in addr; 
+	struct sockaddr_in addr;
 	socklen_t addr_len = sizeof(addr);
 
 	if(!sock)
 		return -1;
 
-	if(sock->recv_buf)
-		mem_free(sock->recv_buf);
-
-	if(sock->send_buf)
-		mem_free(sock->send_buf);
-
-	memset(sock, 0, sizeof(sock_t));
+	close_sock(sock);
 
 	sock->fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if(sock->fd < 0)
@@ -235,21 +310,82 @@ int create_udp(sock_t *sock, __u32 ip, __u16 port)
 	{
 		perror("bind:");
 		close(sock->fd);
-		sock->fd = -1;
+		sock->fd = INVALID_SOCKET;
 		return -1;
 	}
 
-	printf("bind %s:%d ok\n", IpToStr(ip), ntohs(port));
+	CYM_LOG(LV_FATAL, "bind %s:%d, fd [%d] ok\n", IpToStr(ip), ntohs(port), sock->fd);
+
+	sock_add_hash(sock);
+
+	return sock->fd;
+}
+
+// timeout 单位 毫秒
+int create_tcp(sock_t *sock, __u32 ip, __u16 port, int _listen)
+{
+	struct sockaddr_in addr;
+	socklen_t addr_len = sizeof(addr);
+	int opt = 1;
+	int try_tm = 5;
+
+	if(!sock)
+		return -1;
+
+	// 不管啥情况,先清理
+	close_sock(sock);
+
+	sock->fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if(sock->fd < 0)
+	{
+		perror("socket:");
+		return -1;
+	}
+
+	set_sockaddr_in(&addr, ip, port);
+
+	//端口复用
+	setsockopt(sock->fd, SOL_SOCKET, SO_REUSEADDR, (const void *)&opt, sizeof(opt));
+	set_sock_timeout(sock->fd, 300);	// 默认300毫秒延迟
+
+	while(bind(sock->fd, (struct sockaddr *)&addr, addr_len) < 0)
+	{
+		if(try_tm-- < 0)
+		{
+			perror("bind:");
+			close(sock->fd);
+			sock->fd = INVALID_SOCKET;
+			return -1;
+		}
+		printf("try bind tcp port\n");
+	}
+
+	if(_listen)
+	{
+		if(listen(sock->fd, 0x100) < 0)
+		{
+			perror("call to listen");
+			close(sock->fd);
+			sock->fd = INVALID_SOCKET;
+			return -1;
+		}
+	}
+
+	CYM_LOG(LV_FATAL, "bind %s:%d, fd [%d] ok\n", IpToStr(ip), ntohs(port), sock->fd);
+
+	sock_add_hash(sock);
 
 	return sock->fd;
 }
 
 void close_sock(sock_t *sock)
 {
-	if(sock->fd <= 0)
-		goto OUT;
+	if (sock->fd > 0)
+	{
+		close(sock->fd);
+		CYM_LOG(LV_FATAL, "close fd = %d\n", sock->fd);
+	}
 
-	close(sock->fd);
 	if(sock->recv_buf)
 	{
 		mem_free(sock->recv_buf);
@@ -262,10 +398,15 @@ void close_sock(sock_t *sock)
 		sock->send_buf = NULL;
 	}
 
-	memset(sock, 0, sizeof(sock_t));
+	hlist_del_init(&sock->hash_to);
 
-OUT:
-	sock->fd = -1;
+	memset(sock, 0, sizeof(sock_t));
+	sock->fd = INVALID_SOCKET;
 }
 
+void free_sock(sock_t *sock)
+{
+	close_sock(sock);
+	mem_free(sock);
+}
 

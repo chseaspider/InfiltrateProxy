@@ -28,10 +28,8 @@ static inline void init_timer(struct timer_list * timer)
 	timer->expires = 0;
 }
 
-#ifdef HZ
-#undef HZ
-#endif
-
+#ifndef HZ
 #define HZ 1000
+#endif
 
 #endif

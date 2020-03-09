@@ -17,34 +17,50 @@ limitations under the License.
 #ifndef __SOCK_H__
 #define __SOCK_H__
 
+#ifdef WIN32
+#include <WinSock2.h>
+#include <WS2tcpip.h>
+#define poll(a, b, c) WSAPoll(a, b, c)
+#define close(a) closesocket(a)
+#else
 #include <netdb.h>
 #include <sys/ioctl.h>
-#include <net/if.h>
+#include <linux/if.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <poll.h>
+#include <unistd.h>
+#endif
 #include <fcntl.h>
 #include <string.h>
-#include <unistd.h>
 
+#include "timer.h"
+#include "list.h"
 #include "c_type.h"
+
+#ifndef INVALID_SOCKET
+#define INVALID_SOCKET (-1)
+#endif
+
+#define GUESE_PORT_MAX 3
 
 typedef struct sock_s
 {
 	int fd;
 	int poll_i;
-	int proxy;			// 1:代理sock
 	__u32 uptime;		// 最后一次有收包/发包时间 jiffies
 
-	char* recv_buf;		// 接收缓存
+	__u8* recv_buf;		// 接收缓存
 	int recv_buf_len;	// 接收缓存总大小
 	int recv_len;		// 当前已接收数据大小
 
 	char* send_buf;		// 发送缓存
 	int send_buf_len;	// 发送缓存总大小
 	int send_len;		// 当前待发送数据大小
+
+	struct hlist_node hash_to;	// fd 作为唯一标识
 }sock_t;
 
 static inline void poll_add_write(struct pollfd* _poll)
@@ -69,8 +85,13 @@ static inline void poll_del_read(struct pollfd* _poll)
 
 static inline int set_sock_block(int fd)
 {
-	//设置套接字非阻塞
+	//设置套接字阻塞
+#ifdef WIN32
+	unsigned long ul = 0;
+	int ret = ioctlsocket(fd, FIONBIO, (unsigned long *)&ul);
+#else
 	int ret = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
+#endif
 	if(ret == -1)
 	{
 		perror("set sock block:");
@@ -82,7 +103,12 @@ static inline int set_sock_block(int fd)
 static inline int set_sock_nonblock(int fd)
 {
 	//设置套接字非阻塞
+#ifdef WIN32
+	unsigned long ul = 1;
+	int ret = ioctlsocket(fd, FIONBIO, (unsigned long *)&ul);
+#else
 	int ret = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+#endif
 	if(ret == -1)
 	{
 		perror("set sock nonblock:");
@@ -91,13 +117,37 @@ static inline int set_sock_nonblock(int fd)
 	return ret;
 }
 
-static inline __u32 StrToIp(char *str)
+static inline int set_sock_timeout(int fd, int timeout)
+{
+	int ret;
+	struct timeval _timeout;
+	_timeout.tv_sec = (timeout / 1000);
+	_timeout.tv_usec = (timeout % 1000) * HZ;
+	//设置发送超时
+	ret = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&_timeout, sizeof(struct timeval));
+	//设置接收超时
+	ret = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&_timeout, sizeof(struct timeval));
+
+	return ret;
+}
+
+static inline int set_sock_ttl(int fd, int ttl)
+{
+	return setsockopt(fd, IPPROTO_IP, IP_TTL, (void *)(char *)&ttl, sizeof(ttl));
+}
+
+static inline __u32 StrToIp(const char *str)
 {
 	union {
 		struct in_addr ipaddr;
 		__u32 ip;
-	}addr = {};
+	}addr;
+	memset(&addr, 0, sizeof(addr));
+#ifdef WIN32
+	inet_pton(AF_INET, str, &addr.ipaddr);
+#else
 	inet_aton(str, &addr.ipaddr);
+#endif
 	return addr.ip;
 }
 
@@ -111,11 +161,15 @@ static inline char* IpToStr(__u32 ip)
 int sock_add_poll(struct pollfd* _poll, int max, sock_t* sock);
 int sock_del_poll(struct pollfd* _poll, int max, sock_t* sock);
 int create_udp(sock_t *sock, __u32 ip, __u16 port);
+int create_tcp(sock_t *sock, __u32 ip, __u16 port, int _listen);
+sock_t *tcp_accept(sock_t *sock);
 int udp_sock_recv(sock_t * sock, struct sockaddr_in * addr);
 int udp_sock_send(sock_t * sock, void * data, int data_len, __u32 ip, __u16 port);
 void set_sockaddr_in(struct sockaddr_in *addr, __u32 ip, __u16 port);
 void close_sock(sock_t *sock);
+void free_sock(sock_t *sock);
 __u32 get_default_local_ip(void);
+sock_t* sock_find_fd(int fd);
 
 #endif
 
