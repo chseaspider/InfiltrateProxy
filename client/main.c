@@ -143,17 +143,21 @@ int infp_poll_run(int timeout)
 	int ret = -1;
 	int nready = 0, i = 0;
 	nready = poll(poll_arr, curfds, timeout);
-	if (nready == -1)
+	if (nready < 0)
 	{
 		perror("poll error:");
 		abort();
+	}
+	else if(nready == 0)
+	{
+		reutrn 0;
 	}
 
 	for(i = 0; i < curfds; i++)
 	{
 		if(poll_arr[i].fd == gl_cli_infp.main_sock.fd)
 		{
-			if(poll_arr[i].events & POLLIN)
+			if(poll_arr[i].revents & POLLIN)
 			{
 				sock_t *sock = &gl_cli_infp.main_sock;
 
@@ -165,7 +169,7 @@ int infp_poll_run(int timeout)
 			}
 
 			// 没有POLLOUT这个说法, 直接sendto
-			if(poll_arr[i].events & POLLERR)
+			if(poll_arr[i].revents & POLLERR)
 			{
 				goto out;
 			}

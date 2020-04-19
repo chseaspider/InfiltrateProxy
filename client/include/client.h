@@ -21,7 +21,7 @@ limitations under the License.
 #include "timer.h"
 #include "sock.h"
 
-#define INFP_DEFAFULT_PORT 45124 // TODO: 配置文件获取
+#define INFP_DEFAFULT_PORT 55124 // TODO: 配置文件获取
 
 #define INFP_HASH_MAX 0x100
 #define INFP_HASH_MASK 0xff

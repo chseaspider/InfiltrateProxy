@@ -143,10 +143,14 @@ int infp_poll_run(int timeout)
 	int ret = -1;
 	int nready = 0, i = 0;
 	nready = poll(poll_arr, curfds, timeout);
-	if (nready == -1)
+	if (nready < 0)
 	{
 		perror("poll error:");
 		abort();
+	}
+	else if(nready == 0)
+	{
+		return 0;
 	}
 
 	for(i = 0; i < curfds; i++)
@@ -154,7 +158,7 @@ int infp_poll_run(int timeout)
 		if(poll_arr[i].fd == gl_infp.main_sock.fd
 			|| poll_arr[i].fd == gl_infp.back_sock.fd)
 		{
-			if(poll_arr[i].events & POLLIN)
+			if(poll_arr[i].revents & POLLIN)
 			{
 				sock_t *sock = NULL;
 				if(poll_arr[i].fd == gl_infp.main_sock.fd)
@@ -172,26 +176,35 @@ int infp_poll_run(int timeout)
 			}
 
 			// 没有POLLOUT这个说法, 直接sendto
-			if(poll_arr[i].events & POLLERR)
+			if(poll_arr[i].revents & POLLERR)
 			{
 				goto out;
 			}
 		}
 		else if(poll_arr[i].fd == gl_infp.tcp_sock.fd)
 		{
-			sock_t* sock = tcp_accept(&gl_infp.tcp_sock);
-			if(sock)
+			if(poll_arr[i].revents & POLLIN)
 			{
-				int ret = sock_add_poll(poll_arr, INFP_POLL_MAX, sock);
-				if(ret < 0)
+				sock_t* sock = tcp_accept(&gl_infp.tcp_sock);
+				if(sock)
 				{
-					free_sock(sock);
-					if(--nready <= 0)
-						break;
+					int ret = sock_add_poll(poll_arr, INFP_POLL_MAX, sock);
+					if(ret < 0)
+					{
+						free_sock(sock);
+						if(--nready <= 0)
+							break;
 
-					continue;
+						continue;
+					}
+					curfds = ret;
 				}
-				curfds = ret;
+			}
+
+			// 没有POLLOUT这个说法, 直接sendto
+			if(poll_arr[i].revents & POLLERR)
+			{
+				goto out;
 			}
 		}
 		else
@@ -207,7 +220,7 @@ int infp_poll_run(int timeout)
 				continue;
 			}
 
-			if(poll_arr[i].events & POLLIN)
+			if(poll_arr[i].revents & POLLIN)
 			{
 				int ret = infp_main_recv(sock);
 				if(ret > 0)
@@ -227,13 +240,13 @@ int infp_poll_run(int timeout)
 			}
 
 			// TODO: 发包
-			if(poll_arr[i].events & POLLOUT)
+			if(poll_arr[i].revents & POLLOUT)
 			{
 				if(--nready <= 0)
 					break;
 			}
 
-			if(poll_arr[i].events & POLLERR)
+			if(poll_arr[i].revents & POLLERR)
 			{
 				goto out;
 			}
