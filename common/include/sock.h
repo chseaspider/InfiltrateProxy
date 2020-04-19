@@ -60,6 +60,8 @@ typedef struct sock_s
 	int send_buf_len;	// 发送缓存总大小
 	int send_len;		// 当前待发送数据大小
 
+	struct sockaddr_in addr;	// 本地监听的addr信息
+
 	struct hlist_node hash_to;	// fd 作为唯一标识
 }sock_t;
 
@@ -131,9 +133,16 @@ static inline int set_sock_timeout(int fd, int timeout)
 	return ret;
 }
 
-static inline int set_sock_ttl(int fd, int ttl)
+static inline int set_sock_ttl(int fd, int* ttl)
 {
-	return setsockopt(fd, IPPROTO_IP, IP_TTL, (void *)(char *)&ttl, sizeof(ttl));
+	socklen_t len = sizeof(*ttl);
+	return setsockopt(fd, IPPROTO_IP, IP_TTL, (void*)ttl, len);
+}
+
+static inline int get_sock_ttl(int fd, int* ttl)
+{
+	socklen_t len = sizeof(*ttl);
+	return getsockopt(fd, IPPROTO_IP, IP_TTL, (void*)ttl, &len);
 }
 
 static inline __u32 StrToIp(const char *str)
@@ -163,6 +172,7 @@ int sock_del_poll(struct pollfd* _poll, int max, sock_t* sock);
 int create_udp(sock_t *sock, __u32 ip, __u16 port);
 int create_tcp(sock_t *sock, __u32 ip, __u16 port, int _listen);
 sock_t *tcp_accept(sock_t *sock);
+int tcp_just_connect(int fd, unsigned int addr, unsigned short port, int times);
 int udp_sock_recv(sock_t * sock, struct sockaddr_in * addr);
 int udp_sock_send(sock_t * sock, void * data, int data_len, __u32 ip, __u16 port);
 void set_sockaddr_in(struct sockaddr_in *addr, __u32 ip, __u16 port);

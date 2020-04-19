@@ -45,6 +45,14 @@ typedef struct infp_port_s
 	__u16 nat_port;
 }infp_port_t;
 
+typedef struct infp_cli_des_s
+{
+	char des[64];
+	__u32 uptime;	// 更新时间 jiffies
+
+	struct list_head list_to;	// 关联 infp_cli_t -> p2p_list
+}infp_cli_des_t;
+
 typedef struct infp_cli_s
 {
 	char ip[32];		// 终端的内网IP地址
@@ -74,6 +82,8 @@ typedef struct infp_cli_s
 
 	struct list_head list_to;	// 关联infp_t.dev_list
 	struct hlist_node hash_to;	// 关联infp_t.dev_hash ip+name作为hash值
+
+	struct list_head p2p_list;	// 尝试打过洞的节点列表(用于防止反复打洞)
 }infp_cli_t;
 
 extern infp_t gl_infp;

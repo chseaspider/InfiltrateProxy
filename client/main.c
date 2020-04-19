@@ -86,11 +86,6 @@ int infp_init(void)
 	gl_cli_infp.timer.data = (unsigned long)&gl_cli_infp;
 	add_timer(&gl_cli_infp.timer);
 
-	if(gl_cli_infp.mode)
-	{
-		snprintf(gl_cli_infp.dst.ip, sizeof(gl_cli_infp.dst.ip), "192.168.25.101");
-	}
-
 	//初始化sock
 	gl_cli_infp.main_sock.fd = -1;
 	gl_cli_infp.main_port = (rand() % 35535) + 12000;
@@ -189,8 +184,14 @@ out:
 
 int main(int argc, char *argv[])
 {
-	if(argc > 1)
-		gl_cli_infp.mode = !!atoi(argv[1]);
+	if(argc < 3)
+	{
+		printf("usage: ./client src_name dst_name\n");
+		return -1;
+	}
+
+	snprintf(gl_cli_infp.name, sizeof(gl_cli_infp.name), "%s", argv[1]);
+	snprintf(gl_cli_infp.dst.name, sizeof(gl_cli_infp.dst.name), "%s", argv[2]);
 
 	CYM_LOG(LV_QUIET, "start\n");
 

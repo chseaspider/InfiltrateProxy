@@ -49,10 +49,10 @@ int cli_infp_send_login(sock_t* sock, cli_infp_t* infp)
 
 	int len = snprintf(send_buf, sizeof(send_buf)
 					, "{\"cmd\":\"login\",\"ip\":\"%s\",\"port\":\"%d\","
-					"\"mode\":\"%s\",\"name\":\"%s\"}"
+					"\"mode\":\"%s\",\"name\":\"%s\",\"allow_tcp\":\"1\"}"
 					, IpToStr(local_ip)
 					, infp->main_port
-					, infp->mode ? "client" : "host"
+					, "client"
 					, infp->name
 					);
 
@@ -162,8 +162,7 @@ int cli_infp_do_nat_type_ack(cJSON* root, struct sockaddr_in *addr, sock_t *sock
 
 	CYM_LOG(LV_INFO, "nat_type = %d\n", gl_cli_infp.nat_type);
 
-	if(gl_cli_infp.mode && strlen(gl_cli_infp.dst.ip))
-		cli_infp_send_proxy_request(sock, &gl_cli_infp);
+	cli_infp_send_proxy_request(sock, &gl_cli_infp);
 
 	ret = 0;
 out:
@@ -190,7 +189,47 @@ int cli_infp_send_get_nat_port(sock_t* sock, cli_infp_t* infp, int num)
 	return cli_infp_send(infp->server_ip, infp->svr_b_port, sock, send_buf, len);
 }
 
-int cli_infp_get_nat_port(sock_t* sock, cli_infp_t* infp)
+int cli_infp_send_proxy_task_ack(sock_t* sock, cli_infp_t* infp, int ret)
+{
+	char send_buf[1024];
+	__u32 local_ip = get_default_local_ip();
+
+	int len = snprintf(send_buf, sizeof(send_buf)
+					, "{\"cmd\":\"proxy_task_ack\",\"ip\":\"%s\",\"name\":\"%s\""
+						",\"dst_ip\":\"%s\",\"dst_name\":\"%s\",\"ret\":\"%d\"}"
+					, IpToStr(local_ip)
+					, infp->name
+					, infp->dst.ip
+					, infp->dst.name
+					, ret
+					);
+
+	// 介个包, 姑且扔副端口
+	return cli_infp_send(infp->server_ip, infp->svr_b_port, sock, send_buf, len);
+}
+
+
+int cli_infp_send_get_tcp_nat_port(sock_t* sock, cli_infp_t* infp, int num)
+{
+	char send_buf[1024];
+	__u32 local_ip = get_default_local_ip();
+
+	int len = snprintf(send_buf, sizeof(send_buf)
+					, "{\"cmd\":\"get_tcp_nat_port\",\"ip\":\"%s\",\"name\":\"%s\""
+						",\"port\":\"%d\",\"num\":\"%d\",\"dst_ip\":\"%s\",\"dst_name\":\"%s\"}"
+					, IpToStr(local_ip)
+					, infp->name
+					, infp->proxy_port[num]
+					, num
+					, infp->dst.ip
+					, infp->dst.name
+					);
+
+	// 介个包, 只能扔主端口
+	return cli_infp_send(infp->server_ip, infp->svr_m_port, sock, send_buf, len);
+}
+
+int cli_infp_get_nat_port(sock_t* sock, cli_infp_t* infp, int tcp_mode)
 {
 	int try_times = 0;
 	int i = 0;
@@ -216,13 +255,28 @@ try_bind:
 	for(i = 0; i < 3; i++)
 	{
 		gl_cli_infp.proxy_port[i] = port + i;
-		if(create_udp(&gl_cli_infp.proxy_sock[i], 0, htons(gl_cli_infp.proxy_port[i])) < 0)
-			goto try_bind;
-		set_sock_nonblock(gl_cli_infp.proxy_sock[i].fd);
+		if(tcp_mode)
+		{
+			if(create_tcp(&gl_cli_infp.proxy_sock[i], 0, htons(gl_cli_infp.proxy_port[i]), 0))
+				goto try_bind;
+		}
+		else
+		{
+			if(create_udp(&gl_cli_infp.proxy_sock[i], 0, htons(gl_cli_infp.proxy_port[i])) < 0)
+				goto try_bind;
+			set_sock_nonblock(gl_cli_infp.proxy_sock[i].fd);
+		}
 	}
 
-	cli_infp_send_get_nat_port(&gl_cli_infp.proxy_sock[0], infp, 0);
-	cli_infp_send_get_nat_port(&gl_cli_infp.proxy_sock[1], infp, 1);
+	if(tcp_mode)
+	{
+		cli_infp_send_get_tcp_nat_port(&gl_cli_infp.proxy_sock[0], infp, 0);
+	}
+	else
+	{
+		cli_infp_send_get_nat_port(&gl_cli_infp.proxy_sock[0], infp, 0);
+		cli_infp_send_get_nat_port(&gl_cli_infp.proxy_sock[1], infp, 1);
+	}
 // 需统计与服务器延迟, 然后在此处进行回应包的收取
 	return 0;
 }
@@ -230,33 +284,56 @@ try_bind:
 int cli_infp_do_proxy_ack(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 {
 	cJSON* j_value = NULL;
-	if(gl_cli_infp.mode == 0)
-	{
-		j_value = cJSON_GetObjectItem(root, "dst_ip");
-		if(!j_value || !j_value->valuestring)
-		{
-			CYM_LOG(LV_ERROR, "not dst_ip!\n");
-			goto OUT;
-		}
-		snprintf(gl_cli_infp.dst.ip, sizeof(gl_cli_infp.dst.ip), "%s", j_value->valuestring);
+	int tcp_mode = 0;
 
-		j_value = cJSON_GetObjectItem(root, "dst_name");
-		if(!j_value || !j_value->valuestring)
-		{
-			CYM_LOG(LV_ERROR, "not dst_ip!\n");
-			goto OUT;
-		}
-		snprintf((char*)gl_cli_infp.dst.name, sizeof(gl_cli_infp.dst.name), "%s", j_value->valuestring);
+	j_value = cJSON_GetObjectItem(root, "dst_ip");
+	if(!j_value || !j_value->valuestring)
+	{
+		CYM_LOG(LV_ERROR, "not dst_ip!\n");
+		goto OUT;
 	}
+	snprintf(gl_cli_infp.dst.ip, sizeof(gl_cli_infp.dst.ip), "%s", j_value->valuestring);
+
+	j_value = cJSON_GetObjectItem(root, "dst_name");
+	if(!j_value || !j_value->valuestring)
+	{
+		CYM_LOG(LV_ERROR, "not dst_ip!\n");
+		goto OUT;
+	}
+	snprintf((char*)gl_cli_infp.dst.name, sizeof(gl_cli_infp.dst.name), "%s", j_value->valuestring);
+
+	j_value = cJSON_GetObjectItem(root, "mode");
+	if(!j_value || !j_value->valuestring)
+	{
+		CYM_LOG(LV_ERROR, "not mode!\n");
+		goto OUT;
+	}
+	if(!strcmp(j_value->valuestring, "tcp"))
+		tcp_mode = 1;
 
 OUT:
-	return cli_infp_get_nat_port(sock, &gl_cli_infp);
+	return cli_infp_get_nat_port(sock, &gl_cli_infp, tcp_mode);
 }
 
 int cli_infp_send_stun_hello(sock_t* sock, cli_infp_t* infp, __u32 ip, __u16 port)
 {
 	char send_buf[256] = "hello";
 	return cli_infp_send(ip, port, sock, send_buf, 5);
+}
+
+void cli_infp_recv_print_send(sock_t *sock)
+{
+	struct sockaddr_in addr;
+	// 总会收包报错的
+	while(udp_sock_recv(sock, &addr) > 0)
+	{
+		printf("recv %s\n",sock->recv_buf);
+		memset(sock->recv_buf, 0, sock->recv_buf_len);
+		sock->recv_len = 0;
+	}
+
+	send(sock->fd, "hello", 5, 0);
+	printf("send hello\n");
 }
 
 void cli_infp_recv_print(sock_t* sock)
@@ -300,6 +377,92 @@ int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u
 
 	return 0;
 }
+
+int cli_infp_do_tcp_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u16 port, int listen)
+{
+	int i = 0;
+	int ttl = 10;
+
+	if(listen)
+	{
+		for(i = 0; i < 3; i++)
+		{
+			set_sock_ttl(infp->proxy_sock[0].fd, &ttl);
+			set_sock_timeout(infp->proxy_sock[0].fd, 3);// 1个连接3毫秒
+		}
+
+		if(mode)
+		{
+			for(i = 0; i < offset; i++)
+			{
+				tcp_just_connect(infp->proxy_sock[0].fd, ip, htons(port+i), 0);
+			}
+		}
+		else
+		{
+			for(i = 0; i < offset; i++)
+			{
+				tcp_just_connect(infp->proxy_sock[i].fd, ip, htons(port+i), 0);
+			}
+		}
+
+		for(i = 0; i < 3; i++)
+		{
+			close_sock(&infp->proxy_sock[i]);
+			create_tcp(&infp->proxy_sock[i], 0, 0, 1);
+		}
+
+		cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 2);
+
+		for(i = 0; i < 3; i++)
+		{
+			sock_t* new_sock = tcp_accept(&infp->proxy_sock[i]);
+			while(new_sock)
+			{
+				cli_infp_recv_print_send(new_sock);
+				sleep(1);
+			}
+		}
+	}
+	else
+	{
+		if(mode)
+		{
+			for(i = 0; i < offset; i++)
+			{
+				if(!tcp_just_connect(infp->proxy_sock[0].fd, ip, htons(port+i), 0))
+				{
+					cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 1);
+					send(infp->proxy_sock[0].fd, "hello", 5, 0);
+					while(1)
+					{
+						cli_infp_recv_print_send(&infp->proxy_sock[0]);
+						sleep(1);
+					}
+				}
+			}
+		}
+		else
+		{
+			for(i = 0; i < offset; i++)
+			{
+				if(!tcp_just_connect(infp->proxy_sock[i].fd, ip, htons(port+i), 0))
+				{
+					cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 1);
+					send(infp->proxy_sock[i].fd, "hello", 5, 0);
+					while(1)
+					{
+						cli_infp_recv_print_send(&infp->proxy_sock[i]);
+						sleep(1);
+					}
+				}
+			}
+		}
+	}
+
+	return 0;
+}
+
 
 int cli_infp_do_proxy_task(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 {
@@ -360,6 +523,71 @@ out:
 	return ret;
 }
 
+int cli_infp_do_proxy_tcp_task(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
+{
+	int ret = -1;
+	int mode = -1;
+	int offset = 0;
+	__u32 ip = 0;
+	__u16 port = 0;
+	int listen = 0;
+	cJSON* j_value;
+
+	j_value = cJSON_GetObjectItem(root, "mode");
+	if(!j_value || !j_value->valuestring)
+	{
+		CYM_LOG(LV_ERROR, "parse mode failed\n");
+		goto out;
+	}
+	mode = atoi(j_value->valuestring);
+
+	j_value = cJSON_GetObjectItem(root, "offset");
+	if(!j_value || !j_value->valuestring)
+	{
+		CYM_LOG(LV_ERROR, "parse offset failed\n");
+		goto out;
+	}
+	offset = atoi(j_value->valuestring);
+
+	if(offset > 3)
+	{
+		CYM_LOG(LV_ERROR, "offset [%d] is too big\n", offset);
+		goto out;
+	}
+
+	j_value = cJSON_GetObjectItem(root, "dst_ip");
+	if(!j_value || !j_value->valuestring)
+	{
+		CYM_LOG(LV_ERROR, "parse dst_ip failed\n");
+		goto out;
+	}
+	ip = StrToIp(j_value->valuestring);
+
+	j_value = cJSON_GetObjectItem(root, "guess_port");
+	if(!j_value || !j_value->valuestring)
+	{
+		CYM_LOG(LV_ERROR, "parse guess_port failed\n");
+		goto out;
+	}
+	port = atoi(j_value->valuestring);
+
+	j_value = cJSON_GetObjectItem(root, "main");
+	if(!j_value || !j_value->valuestring)
+	{
+		CYM_LOG(LV_ERROR, "parse main failed\n");
+		goto out;
+	}
+	listen = atoi(j_value->valuestring);
+
+	// 尝试打通NAT
+	cli_infp_do_tcp_stun_hello(&gl_cli_infp, offset, mode, ip, port, listen);
+
+	ret = 0;
+out:
+	return ret;
+}
+
+
 int cli_infp_recv_do(sock_t *sock, struct sockaddr_in *addr)
 {
 	int ret = -1;
@@ -391,6 +619,8 @@ int cli_infp_recv_do(sock_t *sock, struct sockaddr_in *addr)
 					ret = cli_infp_do_proxy_ack(root, addr, sock);
 				else if(!strcmp(j_value->valuestring, "proxy_task"))
 					ret = cli_infp_do_proxy_task(root, addr, sock);
+				else if(!strcmp(j_value->valuestring, "proxy_tcp_task"))
+					ret = cli_infp_do_proxy_tcp_task(root, addr, sock);
 				else
 				{
 					CYM_LOG(LV_WARNING,"unknown cmd [%s]\n", j_value->valuestring);

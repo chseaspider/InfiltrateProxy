@@ -9,7 +9,8 @@ P->S: 登陆
 	"ip":"192.168.1.5",
 	"port":"45124",
 	"mode":"host",	//	"client"
-	"name":"Shadowbringers"
+	"name":"Shadowbringers",
+	"allow_tcp": "0|1"
 }
 
 S->P: 登陆回应
@@ -68,6 +69,9 @@ S->P: 代理回应
 	"cmd":"proxy_ack",
 	"ret":0,
 	"msg":"ok",
+	"dst_ip":"192.168.1.5",
+	"dst_name":"",
+	"mode":"tcp|udp"
 }
 
 // 收到proxy_ack后绑定仨连续端口
@@ -84,6 +88,20 @@ P->S: 端口猜测
 	"dst_name":"Lightbringers"
 }
 
+// 收到proxy_ack后绑定仨连续端口
+// 连续俩get_nat_port包给服务器先
+// 第仨端口用来穿
+P->S: 端口猜测
+{
+	"cmd":"get_tcp_nat_port",
+	"ip":"192.168.1.5",
+	"port":"45124",
+	"num":"0",	// 序号,第一个包还是第二个包,连续发两个，用于端口预测
+	"name":"Shadowbringers",
+	"dst_ip":"192.168.1.5",
+	"dst_name":"Lightbringers"
+}
+
 S->P: 代理命令下发 (作为"get_nat_port"的回应包)
 {
 	"cmd":"proxy_task",
@@ -91,6 +109,16 @@ S->P: 代理命令下发 (作为"get_nat_port"的回应包)
 	"guess_port":"45124",	// 预测的对方端口
 	"mode":"0",	// 区别 offset 使用方式
 	"offset":"3"// 偏移量(mode(0),同端口连3次;mode(1):端口加0/1/2,连三个端口)
+}
+
+S->P 代理命令下发 (作为"get_tcp_nat_port"的回应包)
+{
+	"cmd":"proxy_tcp_task",
+	"dst_ip":"",
+	"guess_port":"",
+	"mode":"%d",
+	"offset":"%d",
+	"main":%d	// 1:修改ttl并listen, 0:对端已准备好,请直接connect
 }
 
 P->S: 代理情况回应

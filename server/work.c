@@ -48,11 +48,79 @@ static inline struct hlist_head* infp_get_hash_head(char *str)
 	return &gl_infp.dev_hash[(SDBMHash(str) & INFP_HASH_MASK)];
 }
 
+void infp_del_cli_des(infp_cli_des_t* del)
+{
+	if(del)
+	{
+		list_del(&del->list_to);
+		mem_free(del);
+	}
+}
+
+void infp_clear_cli_des(struct list_head* list)
+{
+	struct list_head *pos, *n;
+	infp_cli_des_t *temp;
+
+	list_for_each_safe(pos, n, list)
+	{
+		temp = list_entry(pos, infp_cli_des_t, list_to);
+		infp_del_cli_des(temp);
+	}
+}
+
+infp_cli_des_t *infp_create_cli_des(char *str, struct list_head* list)
+{
+	infp_cli_des_t *temp = mem_malloc(sizeof(infp_cli_des_t));
+	if(temp)
+	{
+		list_add_tail(&temp->list_to, list);
+
+		snprintf(temp->des, sizeof(temp->des), "%s", str);
+	}
+
+	return temp;
+}
+
+infp_cli_des_t *infp_find_cli_des(char *str, struct list_head* list)
+{
+	struct list_head *pos, *n;
+	infp_cli_des_t *temp;
+
+	list_for_each_safe(pos, n, list)
+	{
+		temp = list_entry(pos, infp_cli_des_t, list_to);
+		// 5秒以上, 删了再说
+		if(jiffies - temp->uptime > 5 * HZ)
+		{
+			infp_del_cli_des(temp);
+		}
+		else if(!strcmp(temp->des, str))
+		{
+			return temp;
+		}
+	}
+
+	return NULL;
+}
+
+infp_cli_des_t *infp_find_create_cli_des(char *str, struct list_head* list)
+{
+	infp_cli_des_t *temp = infp_find_cli_des(str, list);
+	if(temp)
+		return temp;
+
+	return infp_create_cli_des(str, list);
+}
+
+
 void infp_del_cli(infp_cli_t* del)
 {
 	if(del)
 	{
 		CYM_LOG(LV_INFO, "[%s:%s] offline\n", del->ip, del->name);
+
+		infp_clear_cli_des(&del->p2p_list);
 
 		list_del(&del->list_to);
 		hlist_del(&del->hash_to);
@@ -65,6 +133,7 @@ infp_cli_t *infp_create_cli(char *str)
 	infp_cli_t *temp = mem_malloc(sizeof(infp_cli_t));
 	if(temp)
 	{
+		INIT_LIST_HEAD(&temp->p2p_list);
 		list_add_tail(&temp->list_to, &gl_infp.dev_list);
 		hlist_add_head(&temp->hash_to, infp_get_hash_head(str));
 
@@ -146,7 +215,7 @@ int cli_parse_mode(char *mode)
 }
 
 void init_cli_info(infp_cli_t *cli, char *ip, int port
-					, char *mode, char *name, struct sockaddr_in *addr)
+					, char *mode, char *name, struct sockaddr_in *addr, int allow_tcp)
 {
 	snprintf(cli->ip, sizeof(cli->ip), "%s", ip);
 	cli->main_port.src_port = port;
@@ -155,6 +224,7 @@ void init_cli_info(infp_cli_t *cli, char *ip, int port
 	snprintf(cli->name, sizeof(cli->name), "%s", name);
 	cli->nat_ip = addr->sin_addr.s_addr;
 	cli->uptime = jiffies;
+	cli->allow_tcp = allow_tcp;
 }
 
 int cli_send_login_ack(infp_cli_t* cli, sock_t *sock)
@@ -252,6 +322,7 @@ int infp_do_login(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 	int ret = -1;
 	char ip[32];
 	int port;
+	int allow_tcp;
 	char mode[16];
 	char name[32];
 	char des[64];	// ip + name
@@ -273,6 +344,14 @@ int infp_do_login(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 		goto out;
 	}
 	port = atoi(j_value->valuestring);
+
+	j_value = cJSON_GetObjectItem(root, "allow_tcp");
+	if(!j_value || !j_value->valuestring)
+	{
+		CYM_LOG(LV_ERROR, "parse port failed\n");
+		goto out;
+	}
+	allow_tcp = atoi(j_value->valuestring);
 
 	j_value = cJSON_GetObjectItem(root, "mode");
 	if(!j_value || !j_value->valuestring)
@@ -298,7 +377,7 @@ int infp_do_login(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 		goto out;
 	}
 
-	init_cli_info(cli, ip, port, mode, name, addr);
+	init_cli_info(cli, ip, port, mode, name, addr, allow_tcp);
 
 	cli_send_login_ack(cli, sock);
 	ret = 0;
@@ -380,6 +459,7 @@ int infp_do_proxy_request(cJSON* root, struct sockaddr_in *addr, sock_t *sock, i
 {
 	int ret = -1;
 	infp_cli_t *cli, *dst;
+	infp_cli_des_t *cli_des, *dst_des;
 
 	cli = infp_find_cli_json(root, 0);
 	if(!cli)
@@ -397,8 +477,18 @@ int infp_do_proxy_request(cJSON* root, struct sockaddr_in *addr, sock_t *sock, i
 	else
 	{
 		// TODO: 记录请求, 5秒仅回一次
-		cli_send_proxy_ack(cli, dst, sock, 0, "ok", mode);
-		cli_send_proxy_ack(dst, cli, sock, 0, "ok", mode);
+		cli_des = infp_find_create_cli_des(cli->des, &dst->p2p_list);
+		dst_des = infp_find_create_cli_des(dst->des, &cli->p2p_list);
+		if(cli_des && dst_des)
+		{
+			if(!cli_des->uptime && dst_des->uptime)
+			{
+				cli_send_proxy_ack(cli, dst, sock, 0, "ok", mode);
+				cli_send_proxy_ack(dst, cli, sock, 0, "ok", mode);
+
+				cli_des->uptime = dst_des->uptime = jiffies;
+			}
+		}
 	}
 
 	ret = 0;
@@ -530,11 +620,13 @@ int infp_do_get_tcp_nat_port(cJSON* root, struct sockaddr_in *addr, sock_t *sock
 		goto out;
 	}
 
-	if(cli->nat_tcp && cli->guess_tcp)
+	if(cli->nat_tcp)
 	{
 		cli->guess_port = cli->guess_tcp + cli->nat_tcp;	// tcp猜测端口
-		if(dst->guess_tcp && dst->nat_tcp)
+		if(dst->nat_tcp)
 		{
+			// 优先反向打洞(1.对称 syn -> 非对称 2.对称listen 3.非对称 syn -> 对称)
+			// 此处处理1
 			if(cli->nat_type == SYMMETRICAL_NAT_TYPE && dst->nat_type == SYMMETRICAL_NAT_TYPE)
 			{
 				cli_send_proxy_tcp_task(cli, sock, dst, 1, INFP_DEF_OFFSET, 1);
@@ -594,6 +686,8 @@ int infp_do_proxy_task_ack(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 		if(j_ret == 2)
 		{
 			CYM_LOG(LV_INFO, "成了一半\n");
+			// 优先反向打洞(1.对称 syn -> 非对称 2.对称listen 3.非对称 syn -> 对称)
+			// 此处处理3
 			if(cli->nat_type == SYMMETRICAL_NAT_TYPE || dst->nat_type == SYMMETRICAL_NAT_TYPE)
 			{
 				cli_send_proxy_tcp_task(dst, sock, cli, 0, INFP_DEF_OFFSET, 0);

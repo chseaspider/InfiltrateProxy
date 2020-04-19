@@ -29,7 +29,7 @@ limitations under the License.
 struct hlist_head sock_hash[SOCK_HASH_MAX];
 int sock_hash_init = 0;
 
-// TODO: thread safe
+// TODO:need support thread safe
 void sock_add_hash(sock_t* sock)
 {
 	if(!sock_hash_init)
@@ -41,13 +41,13 @@ void sock_add_hash(sock_t* sock)
 
 	// 以防万一, 先删
 	hlist_del_init(&sock->hash_to);
-	hlist_add_head(&sock->hash_to, &sock_hash[BobHash(sock->fd)]);
+	hlist_add_head(&sock->hash_to, &sock_hash[BobHash(sock->fd) & SOCK_HASH_MASK]);
 }
 
 sock_t* sock_find_fd(int fd)
 {
 	sock_t* sock;
-	struct hlist_head* head = &sock_hash[BobHash(fd)];
+	struct hlist_head* head = &sock_hash[BobHash(fd) & SOCK_HASH_MASK];
 
 	hlist_for_each_entry(sock, head, hash_to)
 	{
@@ -314,7 +314,7 @@ int create_udp(sock_t *sock, __u32 ip, __u16 port)
 		return -1;
 	}
 
-	CYM_LOG(LV_FATAL, "bind %s:%d, fd [%d] ok\n", IpToStr(ip), ntohs(port), sock->fd);
+	CYM_LOG(LV_FATAL, "udp bind %s:%d, fd [%d] ok\n", IpToStr(ip), ntohs(port), sock->fd);
 
 	sock_add_hash(sock);
 
@@ -335,18 +335,30 @@ int create_tcp(sock_t *sock, __u32 ip, __u16 port, int _listen)
 	// 不管啥情况,先清理
 	close_sock(sock);
 
-	sock->fd = socket(AF_INET, SOCK_DGRAM, 0);
+	sock->fd = socket(AF_INET, SOCK_STREAM, 0);
 	if(sock->fd < 0)
 	{
 		perror("socket:");
 		return -1;
 	}
 
-	set_sockaddr_in(&addr, ip, port);
+	if(ip || port)
+	{
+		set_sockaddr_in(&addr, ip, port);
+	}
+	else if(sock)
+	{
+		memcpy(&addr, &sock->addr, sizeof(addr));
+	}
+	else
+	{
+		printf("%s[%s]:%d ?\n", __FILE__, __FUNCTION__, __LINE__);
+		return -1;
+	}
 
 	//端口复用
 	setsockopt(sock->fd, SOL_SOCKET, SO_REUSEADDR, (const void *)&opt, sizeof(opt));
-	set_sock_timeout(sock->fd, 300);	// 默认300毫秒延迟
+	set_sock_timeout(sock->fd, 500);	// 默认500毫秒延迟
 
 	while(bind(sock->fd, (struct sockaddr *)&addr, addr_len) < 0)
 	{
@@ -357,7 +369,7 @@ int create_tcp(sock_t *sock, __u32 ip, __u16 port, int _listen)
 			sock->fd = INVALID_SOCKET;
 			return -1;
 		}
-		printf("try bind tcp port\n");
+		printf("try bind tcp port %u\n", ntohs(addr.sin_port));
 	}
 
 	if(_listen)
@@ -371,12 +383,37 @@ int create_tcp(sock_t *sock, __u32 ip, __u16 port, int _listen)
 		}
 	}
 
-	CYM_LOG(LV_FATAL, "bind %s:%d, fd [%d] ok\n", IpToStr(ip), ntohs(port), sock->fd);
+	CYM_LOG(LV_FATAL, "tcp bind %s:%d, fd [%d] ok\n", IpToStr(addr.sin_addr.s_addr), ntohs(addr.sin_port), sock->fd);
 
 	sock_add_hash(sock);
 
 	return sock->fd;
 }
+
+int tcp_just_connect(int fd, unsigned int addr, unsigned short port, int times)
+{
+	struct sockaddr_in sin;
+	int ret = -1;
+	int try_tm = times;
+	bzero(&sin,sizeof(sin));
+	sin.sin_family = AF_INET;
+	sin.sin_addr.s_addr=addr;
+	sin.sin_port=port;
+
+	while(connect(fd,(void *)&sin,sizeof(sin)) < 0)
+	{
+		if(try_tm-- <= 0)
+		{
+			goto out;
+		}
+		printf("try connect tcp port %d\n", ntohs(port));
+	}
+
+	ret = 0;
+out:
+	return ret;
+}
+
 
 void close_sock(sock_t *sock)
 {
