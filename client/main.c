@@ -150,7 +150,7 @@ int infp_poll_run(int timeout)
 	}
 	else if(nready == 0)
 	{
-		reutrn 0;
+		return 0;
 	}
 
 	for(i = 0; i < curfds; i++)
