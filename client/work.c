@@ -363,7 +363,7 @@ void cli_infp_recv_print(sock_t* sock)
 	while(udp_sock_recv(sock, &addr) > 0)
 	{
 		memxor(sock->recv_buf, sock->recv_len);
-		printf("%s\n",sock->recv_buf);
+		printf("recv %s\n",sock->recv_buf);
 		memset(sock->recv_buf, 0, sock->recv_buf_len);
 		sock->recv_len = 0;
 	}
@@ -496,7 +496,6 @@ int cli_infp_do_proxy_task(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 	{
 		// 尝试打通NAT
 		cli_infp_do_stun_hello(&gl_cli_infp, offset, mode, ip, port);
-		sleep(10);
 	}
 
 	ret = 0;
