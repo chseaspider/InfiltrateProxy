@@ -20,6 +20,7 @@ limitations under the License.
 #include <unistd.h>
 #include <poll.h>
 #include <arpa/inet.h>
+#include <signal.h>
 
 #include "c_type.h"
 #include "sock.h"
@@ -30,7 +31,7 @@ limitations under the License.
 
 int debug_level = 10;
 
-#define INFP_DEFAFULT_PORT 45124 // TODO: 配置文件获取
+#define INFP_DEFAFULT_PORT 55124 // TODO: 配置文件获取
 #define INFP_POLL_MAX 0x100		// 
 
 infp_t gl_infp = {};

@@ -325,17 +325,35 @@ int cli_infp_send_stun_hello(sock_t* sock, cli_infp_t* infp, __u32 ip, __u16 por
 
 void cli_infp_recv_print_send(sock_t *sock)
 {
+	static __u32 last_send = 0;
+	static __u32 send_count = 0;
 	struct sockaddr_in addr;
 	// 总会收包报错的
+	send(sock->fd, "hello", 5, 0);
+	printf("send hello\n");
+	last_send = jiffies;
+	send_count++;
+
 	while(udp_sock_recv(sock, &addr) > 0)
 	{
 		printf("recv %s\n",sock->recv_buf);
+		if(!strcmp((char*)sock->recv_buf, "world"))
+		{
+			printf("%lu ms\n", jiffies - last_send);
+			send_count--;
+		}
+		else
+		{
+			send(sock->fd, "world", 5, 0);
+		}
 		memset(sock->recv_buf, 0, sock->recv_buf_len);
 		sock->recv_len = 0;
-	}
 
-	send(sock->fd, "hello", 5, 0);
-	printf("send hello\n");
+		if(send_count <= 0)
+		{
+			break;
+		}
+	}
 }
 
 void cli_infp_recv_print(sock_t* sock)
@@ -415,10 +433,9 @@ int cli_infp_do_tcp_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip,
 		while(!tcp_just_connect(infp->proxy_sock[1].fd, ip, htons(port), 0))
 		{
 			cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 1);
-			send(infp->proxy_sock[i].fd, "hello", 5, 0);
 			while(1)
 			{
-				cli_infp_recv_print_send(&infp->proxy_sock[i]);
+				cli_infp_recv_print_send(&infp->proxy_sock[1]);
 				sleep(1);
 			}
 		}
