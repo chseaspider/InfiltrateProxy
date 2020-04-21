@@ -198,7 +198,10 @@ int infp_poll_run(int timeout)
 						continue;
 					}
 					curfds = ret;
+					printf("accept fd [%d] ok\n", sock->fd);
 				}
+				if(--nready <= 0)
+					break;
 			}
 
 			// 没有POLLOUT这个说法, 直接sendto
@@ -207,7 +210,7 @@ int infp_poll_run(int timeout)
 				goto out;
 			}
 		}
-		else
+		else if(poll_arr[i].fd != -1)
 		{
 			sock_t* sock = sock_find_fd(poll_arr[i].fd);
 			if(!sock)
@@ -261,6 +264,8 @@ out:
 int main(int argc, char *argv[])
 {
 	CYM_LOG(LV_QUIET, "start\n");
+
+	signal(SIGPIPE, SIG_IGN);
 
 	if(infp_init())
 	{

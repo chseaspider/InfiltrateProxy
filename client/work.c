@@ -257,7 +257,7 @@ try_bind:
 		gl_cli_infp.proxy_port[i] = port + i;
 		if(tcp_mode)
 		{
-			if(create_tcp(&gl_cli_infp.proxy_sock[i], 0, htons(gl_cli_infp.proxy_port[i]), 0))
+			if(create_tcp(&gl_cli_infp.proxy_sock[i], 0, htons(gl_cli_infp.proxy_port[i]), 0) < 0)
 				goto try_bind;
 		}
 		else
@@ -270,6 +270,8 @@ try_bind:
 
 	if(tcp_mode)
 	{
+		if(tcp_just_connect(gl_cli_infp.proxy_sock[0].fd, gl_cli_infp.server_ip, gl_cli_infp.svr_m_port, 3))
+			goto try_bind;
 		cli_infp_send_get_tcp_nat_port(&gl_cli_infp.proxy_sock[0], infp, 0);
 	}
 	else
@@ -385,26 +387,10 @@ int cli_infp_do_tcp_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip,
 
 	if(listen)
 	{
-		for(i = 0; i < 3; i++)
-		{
-			set_sock_ttl(infp->proxy_sock[0].fd, &ttl);
-			set_sock_timeout(infp->proxy_sock[0].fd, 3);// 1个连接3毫秒
-		}
+		set_sock_ttl(infp->proxy_sock[1].fd, &ttl);
+		set_sock_timeout(infp->proxy_sock[1].fd, 10);// 10毫秒超时
 
-		if(mode)
-		{
-			for(i = 0; i < offset; i++)
-			{
-				tcp_just_connect(infp->proxy_sock[0].fd, ip, htons(port+i), 0);
-			}
-		}
-		else
-		{
-			for(i = 0; i < offset; i++)
-			{
-				tcp_just_connect(infp->proxy_sock[i].fd, ip, htons(port+i), 0);
-			}
-		}
+		tcp_just_connect(infp->proxy_sock[1].fd, ip, htons(port), 0);
 
 		for(i = 0; i < 3; i++)
 		{
@@ -414,9 +400,9 @@ int cli_infp_do_tcp_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip,
 
 		cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 2);
 
-		for(i = 0; i < 3; i++)
+		while(1)
 		{
-			sock_t* new_sock = tcp_accept(&infp->proxy_sock[i]);
+			sock_t* new_sock = tcp_accept(&infp->proxy_sock[1]);
 			while(new_sock)
 			{
 				cli_infp_recv_print_send(new_sock);
@@ -426,36 +412,14 @@ int cli_infp_do_tcp_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip,
 	}
 	else
 	{
-		if(mode)
+		while(!tcp_just_connect(infp->proxy_sock[1].fd, ip, htons(port), 0))
 		{
-			for(i = 0; i < offset; i++)
+			cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 1);
+			send(infp->proxy_sock[i].fd, "hello", 5, 0);
+			while(1)
 			{
-				if(!tcp_just_connect(infp->proxy_sock[0].fd, ip, htons(port+i), 0))
-				{
-					cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 1);
-					send(infp->proxy_sock[0].fd, "hello", 5, 0);
-					while(1)
-					{
-						cli_infp_recv_print_send(&infp->proxy_sock[0]);
-						sleep(1);
-					}
-				}
-			}
-		}
-		else
-		{
-			for(i = 0; i < offset; i++)
-			{
-				if(!tcp_just_connect(infp->proxy_sock[i].fd, ip, htons(port+i), 0))
-				{
-					cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 1);
-					send(infp->proxy_sock[i].fd, "hello", 5, 0);
-					while(1)
-					{
-						cli_infp_recv_print_send(&infp->proxy_sock[i]);
-						sleep(1);
-					}
-				}
+				cli_infp_recv_print_send(&infp->proxy_sock[i]);
+				sleep(1);
 			}
 		}
 	}

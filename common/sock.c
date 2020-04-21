@@ -37,6 +37,8 @@ void sock_add_hash(sock_t* sock)
 		int i = 0;
 		for(i = 0; i < SOCK_HASH_MAX; i++)
 			INIT_HLIST_HEAD(&sock_hash[i]);
+
+		sock_hash_init = 1;
 	}
 
 	// 以防万一, 先删
@@ -282,9 +284,10 @@ sock_t *tcp_accept(sock_t *sock)
 
 	new_sock->fd = fd;
 	set_sock_timeout(fd, 300);
-	sock_add_hash(sock);
+	sock_add_hash(new_sock);
+	memcpy(&new_sock->addr, &addr, sizeof(new_sock->addr));
 
-	return sock;
+	return new_sock;
 }
 
 int create_udp(sock_t *sock, __u32 ip, __u16 port)
@@ -345,6 +348,7 @@ int create_tcp(sock_t *sock, __u32 ip, __u16 port, int _listen)
 	if(ip || port)
 	{
 		set_sockaddr_in(&addr, ip, port);
+		memcpy(&sock->addr, &addr, sizeof(sock->addr));
 	}
 	else if(sock)
 	{
@@ -400,13 +404,13 @@ int tcp_just_connect(int fd, unsigned int addr, unsigned short port, int times)
 	sin.sin_addr.s_addr=addr;
 	sin.sin_port=port;
 
+	printf("try connect tcp %s:%d\n", IpToStr(addr), ntohs(port));
 	while(connect(fd,(void *)&sin,sizeof(sin)) < 0)
 	{
 		if(try_tm-- <= 0)
 		{
 			goto out;
 		}
-		printf("try connect tcp port %d\n", ntohs(port));
 	}
 
 	ret = 0;
@@ -437,7 +441,7 @@ void close_sock(sock_t *sock)
 
 	hlist_del_init(&sock->hash_to);
 
-	memset(sock, 0, sizeof(sock_t));
+	//memset(sock, 0, sizeof(sock_t));
 	sock->fd = INVALID_SOCKET;
 }
 

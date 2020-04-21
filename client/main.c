@@ -20,6 +20,7 @@ limitations under the License.
 #include <unistd.h>
 #include <poll.h>
 #include <arpa/inet.h>
+#include <signal.h>
 
 #include "c_type.h"
 #include "sock.h"
@@ -77,7 +78,7 @@ int infp_init(void)
 	init_timer_module();
 
 	// TODO: modify default server info
-	gl_cli_infp.server_ip = StrToIp("192.168.25.101");
+	gl_cli_infp.server_ip = StrToIp("132.232.46.6");
 	gl_cli_infp.svr_m_port = htons(INFP_DEFAFULT_PORT);
 	gl_cli_infp.svr_b_port = htons(INFP_DEFAFULT_PORT+1);
 
@@ -194,8 +195,11 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
+	signal(SIGPIPE, SIG_IGN);
+
 	snprintf(gl_cli_infp.name, sizeof(gl_cli_infp.name), "%s", argv[1]);
 	snprintf(gl_cli_infp.dst.name, sizeof(gl_cli_infp.dst.name), "%s", argv[2]);
+	snprintf(gl_cli_infp.dst.ip, sizeof(gl_cli_infp.dst.ip), "0.0.0.0");
 
 	CYM_LOG(LV_QUIET, "start\n");
 
