@@ -330,13 +330,11 @@ void cli_infp_recv_print_send(sock_t *sock)
 	struct sockaddr_in addr;
 	// 总会收包报错的
 	send(sock->fd, "hello", 5, 0);
-	printf("send hello\n");
 	last_send = jiffies;
 	send_count++;
 
 	while(udp_sock_recv(sock, &addr) > 0)
 	{
-		printf("recv %s\n",sock->recv_buf);
 		if(!strcmp((char*)sock->recv_buf, "world"))
 		{
 			printf("%lu ms\n", jiffies - last_send);
@@ -354,20 +352,22 @@ void cli_infp_recv_print_send(sock_t *sock)
 			break;
 		}
 	}
+
+	if(jiffies - last_send > 3000)
+	{
+		printf("cannot connect\n");
+	}
 }
 
-void cli_infp_recv_print(sock_t* sock)
+int cli_infp_recv_udp_accept(sock_t* sock)
 {
 	struct sockaddr_in addr;
-	// 总会收包报错的
 	while(udp_sock_recv(sock, &addr) > 0)
 	{
-		memxor(sock->recv_buf, sock->recv_len);
-		printf("recv %s\n",sock->recv_buf);
-		memset(sock->recv_buf, 0, sock->recv_buf_len);
-		sock->recv_len = 0;
+		return 1;
 	}
-	printf("%d done\n", sock->fd);
+
+	return 0;
 }
 
 int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u16 port, int listen)
@@ -389,8 +389,18 @@ int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u
 			}
 			set_sock_ttl(infp->proxy_sock[0].fd, &old_ttl);
 			cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 3);
-			sleep(1);
-			cli_infp_recv_print(&infp->proxy_sock[0]);
+			while(1)
+			{
+				sleep(1);
+				if(cli_infp_recv_udp_accept(&infp->proxy_sock[0]))
+				{
+					while(1)
+					{
+						cli_infp_recv_print_send(&infp->proxy_sock[0]);
+						sleep(1);
+					}
+				}
+			}
 		}
 		else
 		{
@@ -403,9 +413,21 @@ int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u
 				set_sock_ttl(infp->proxy_sock[i].fd, &old_ttl);
 			}
 			cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 3);
-			sleep(1);
-			for(i = 0; i < offset; i++)
-				cli_infp_recv_print(&infp->proxy_sock[i]);
+			while(1)
+			{
+				sleep(1);
+				for(i = 0; i < offset; i++)
+				{
+					if(cli_infp_recv_udp_accept(&infp->proxy_sock[i]))
+					{
+						while(1)
+						{
+							cli_infp_recv_print_send(&infp->proxy_sock[i]);
+							sleep(1);
+						}
+					}
+				}
+			}
 		}
 	}
 	else
@@ -417,8 +439,18 @@ int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u
 				printf("sendto %s:%d\n", IpToStr(ip), port+1);
 				cli_infp_send_stun_hello(&infp->proxy_sock[0], infp, ip, htons(port+i));
 			}
-			sleep(1);
-			cli_infp_recv_print(&infp->proxy_sock[0]);
+			while(1)
+			{
+				sleep(1);
+				if(cli_infp_recv_udp_accept(&infp->proxy_sock[0]))
+				{
+					while(1)
+					{
+						cli_infp_recv_print_send(&infp->proxy_sock[0]);
+						sleep(1);
+					}
+				}
+			}
 		}
 		else
 		{
@@ -427,9 +459,21 @@ int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u
 				printf("sendto %s:%d\n", IpToStr(ip), port);
 				cli_infp_send_stun_hello(&infp->proxy_sock[i], infp, ip, htons(port));
 			}
-			sleep(1);
-			for(i = 0; i < offset; i++)
-				cli_infp_recv_print(&infp->proxy_sock[i]);
+			while(1)
+			{
+				sleep(1);
+				for(i = 0; i < offset; i++)
+				{
+					if(cli_infp_recv_udp_accept(&infp->proxy_sock[i]))
+					{
+						while(1)
+						{
+							cli_infp_recv_print_send(&infp->proxy_sock[i]);
+							sleep(1);
+						}
+					}
+				}
+			}
 		}
 	}
 
