@@ -364,9 +364,13 @@ int cli_infp_recv_udp_accept(sock_t* sock)
 	struct sockaddr_in addr;
 	while(udp_sock_recv(sock, &addr) > 0)
 	{
+		printf("[%d] recv sth!\n", sock->fd);
+		memset(sock->recv_buf, 0, sock->recv_buf_len);
+		sock->recv_len = 0;
 		return 1;
 	}
 
+	printf("[%d] recv nothing\n", sock->fd);
 	return 0;
 }
 
@@ -380,11 +384,12 @@ int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u
 	{
 		if(mode)
 		{
+			set_sock_nonblock(infp->proxy_sock[0].fd);
 			get_sock_ttl(infp->proxy_sock[0].fd, &old_ttl);
 			set_sock_ttl(infp->proxy_sock[0].fd, &new_ttl);
 			for(i = 0; i < offset; i++)
 			{
-				printf("sendto %s:%d\n", IpToStr(ip), port+1);
+				printf("sendto %s:%d\n", IpToStr(ip), port+i);
 				cli_infp_send_stun_hello(&infp->proxy_sock[0], infp, ip, htons(port+i));
 			}
 			set_sock_ttl(infp->proxy_sock[0].fd, &old_ttl);
@@ -406,6 +411,7 @@ int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u
 		{
 			for(i = 0; i < offset; i++)
 			{
+				set_sock_nonblock(infp->proxy_sock[i].fd);
 				get_sock_ttl(infp->proxy_sock[i].fd, &old_ttl);
 				set_sock_ttl(infp->proxy_sock[i].fd, &new_ttl);
 				printf("sendto %s:%d\n", IpToStr(ip), port);
@@ -434,9 +440,10 @@ int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u
 	{
 		if(mode)
 		{
+			set_sock_nonblock(infp->proxy_sock[0].fd);
 			for(i = 0; i < offset; i++)
 			{
-				printf("sendto %s:%d\n", IpToStr(ip), port+1);
+				printf("sendto %s:%d\n", IpToStr(ip), port+i);
 				cli_infp_send_stun_hello(&infp->proxy_sock[0], infp, ip, htons(port+i));
 			}
 			while(1)
@@ -456,6 +463,7 @@ int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u
 		{
 			for(i = 0; i < offset; i++)
 			{
+				set_sock_nonblock(infp->proxy_sock[i].fd);
 				printf("sendto %s:%d\n", IpToStr(ip), port);
 				cli_infp_send_stun_hello(&infp->proxy_sock[i], infp, ip, htons(port));
 			}
@@ -633,11 +641,8 @@ int cli_infp_do_proxy_task(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 	}
 	listen = atoi(j_value->valuestring);
 
-	while(1)
-	{
-		// 尝试打通NAT
-		cli_infp_do_stun_hello(&gl_cli_infp, offset, mode, ip, port, listen);
-	}
+	// 尝试打通NAT
+	cli_infp_do_stun_hello(&gl_cli_infp, offset, mode, ip, port, listen);
 
 	ret = 0;
 out:
