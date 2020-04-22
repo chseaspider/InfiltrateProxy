@@ -283,16 +283,17 @@ int cli_send_proxy_ack(infp_cli_t* cli, infp_cli_t* dst, sock_t *sock, int ret, 
 
 // mode: 0:自身是固定端口, 对端端口自增, 1:自身端口自增, 对端端口固定
 // offset: 自增次数(越大,命中率越高,但容易被防火墙拦截, 为1表示不用自增, 1以下无意义)
-int cli_send_proxy_task(infp_cli_t* cli, sock_t *sock, infp_cli_t* dst, int mode, int offset)
+int cli_send_proxy_task(infp_cli_t* cli, sock_t *sock, infp_cli_t* dst, int mode, int offset, int main)
 {
 	char send_buf[1024];
 	int len = snprintf(send_buf, sizeof(send_buf)
 					,"{\"cmd\":\"proxy_task\",\"dst_ip\":\"%s\",\"guess_port\":\"%d\""
-					",\"mode\":\"%d\",\"offset\":\"%d\",\"ret\":0}"
+					",\"mode\":\"%d\",\"offset\":\"%d\",\"ret\":0,\"main\":\"%d\"}"
 					, IpToStr(dst->nat_ip)
 					, dst->guess_port
 					, mode
 					, offset
+					, main
 					);
 
 	return infp_server_send(cli, sock, send_buf, len);
@@ -575,23 +576,23 @@ int infp_do_get_nat_port(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 			{
 				if(cli->nat_type == SYMMETRICAL_NAT_TYPE && dst->nat_type == SYMMETRICAL_NAT_TYPE)
 				{
-					cli_send_proxy_task(cli, sock, dst, 1, INFP_DEF_OFFSET);
-					cli_send_proxy_task(dst, sock, cli, 0, INFP_DEF_OFFSET);
+					cli_send_proxy_task(cli, sock, dst, 1, INFP_DEF_OFFSET, 1);
+					//cli_send_proxy_task(dst, sock, cli, 0, INFP_DEF_OFFSET);
 				}
 				else if(cli->nat_type == SYMMETRICAL_NAT_TYPE)
 				{
-					cli_send_proxy_task(cli, sock, dst, 0, INFP_DEF_OFFSET);
-					cli_send_proxy_task(dst, sock, cli, 1, INFP_DEF_OFFSET);
+					//cli_send_proxy_task(cli, sock, dst, 0, INFP_DEF_OFFSET);
+					cli_send_proxy_task(dst, sock, cli, 1, INFP_DEF_OFFSET, 1);
 				}
 				else if(dst->nat_type == SYMMETRICAL_NAT_TYPE)
 				{
-					cli_send_proxy_task(cli, sock, dst, 1, INFP_DEF_OFFSET);
-					cli_send_proxy_task(dst, sock, cli, 0, INFP_DEF_OFFSET);
+					cli_send_proxy_task(cli, sock, dst, 1, INFP_DEF_OFFSET, 1);
+					//cli_send_proxy_task(dst, sock, cli, 0, INFP_DEF_OFFSET);
 				}
 				else
 				{
-					cli_send_proxy_task(cli, sock, dst, 0, INFP_NO_OFFSET);
-					cli_send_proxy_task(dst, sock, cli, 0, INFP_NO_OFFSET);
+					cli_send_proxy_task(cli, sock, dst, 0, INFP_NO_OFFSET, 1);
+					//cli_send_proxy_task(dst, sock, cli, 0, INFP_NO_OFFSET);
 				}
 			}
 		}
@@ -699,6 +700,20 @@ int infp_do_proxy_task_ack(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 			else
 			{
 				cli_send_proxy_tcp_task(dst, sock, cli, 0, INFP_NO_OFFSET, 0);
+			}
+		}
+		else if(j_ret == 3)
+		{
+			CYM_LOG(LV_INFO, "成了一半\n");
+			// 优先反向打洞(1.非对称 syn -> 对称 2.非对称listen 3.对称 syn -> 非对称)
+			// 此处处理3
+			if(cli->nat_type == SYMMETRICAL_NAT_TYPE || dst->nat_type == SYMMETRICAL_NAT_TYPE)
+			{
+				cli_send_proxy_task(dst, sock, cli, 0, INFP_DEF_OFFSET, 0);
+			}
+			else
+			{
+				cli_send_proxy_task(dst, sock, cli, 0, INFP_NO_OFFSET, 0);
 			}
 		}
 		else

@@ -370,30 +370,67 @@ void cli_infp_recv_print(sock_t* sock)
 	printf("%d done\n", sock->fd);
 }
 
-int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u16 port)
+int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u16 port, int listen)
 {
 	int i = 0;
+	int old_ttl = -1;
+	int new_ttl = 10;
 
-	if(mode)
+	if(listen)
 	{
-		for(i = 0; i < offset; i++)
+		if(mode)
 		{
-			printf("sendto %s:%d\n", IpToStr(ip), port+1);
-			cli_infp_send_stun_hello(&infp->proxy_sock[0], infp, ip, htons(port+i));
+			get_sock_ttl(infp->proxy_sock[0].fd, &old_ttl);
+			set_sock_ttl(infp->proxy_sock[0].fd, &new_ttl);
+			for(i = 0; i < offset; i++)
+			{
+				printf("sendto %s:%d\n", IpToStr(ip), port+1);
+				cli_infp_send_stun_hello(&infp->proxy_sock[0], infp, ip, htons(port+i));
+			}
+			set_sock_ttl(infp->proxy_sock[0].fd, &old_ttl);
+			cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 3);
+			sleep(1);
+			cli_infp_recv_print(&infp->proxy_sock[0]);
 		}
-		sleep(1);
-		cli_infp_recv_print(&infp->proxy_sock[0]);
+		else
+		{
+			for(i = 0; i < offset; i++)
+			{
+				get_sock_ttl(infp->proxy_sock[i].fd, &old_ttl);
+				set_sock_ttl(infp->proxy_sock[i].fd, &new_ttl);
+				printf("sendto %s:%d\n", IpToStr(ip), port);
+				cli_infp_send_stun_hello(&infp->proxy_sock[i], infp, ip, htons(port));
+				set_sock_ttl(infp->proxy_sock[i].fd, &old_ttl);
+			}
+			cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 3);
+			sleep(1);
+			for(i = 0; i < offset; i++)
+				cli_infp_recv_print(&infp->proxy_sock[i]);
+		}
 	}
 	else
 	{
-		for(i = 0; i < offset; i++)
+		if(mode)
 		{
-			printf("sendto %s:%d\n", IpToStr(ip), port);
-			cli_infp_send_stun_hello(&infp->proxy_sock[i], infp, ip, htons(port));
+			for(i = 0; i < offset; i++)
+			{
+				printf("sendto %s:%d\n", IpToStr(ip), port+1);
+				cli_infp_send_stun_hello(&infp->proxy_sock[0], infp, ip, htons(port+i));
+			}
+			sleep(1);
+			cli_infp_recv_print(&infp->proxy_sock[0]);
 		}
-		sleep(1);
-		for(i = 0; i < offset; i++)
-			cli_infp_recv_print(&infp->proxy_sock[i]);
+		else
+		{
+			for(i = 0; i < offset; i++)
+			{
+				printf("sendto %s:%d\n", IpToStr(ip), port);
+				cli_infp_send_stun_hello(&infp->proxy_sock[i], infp, ip, htons(port));
+			}
+			sleep(1);
+			for(i = 0; i < offset; i++)
+				cli_infp_recv_print(&infp->proxy_sock[i]);
+		}
 	}
 
 	return 0;
@@ -501,6 +538,7 @@ int cli_infp_do_proxy_task(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 	int ret = -1;
 	int mode = -1;
 	int offset = 0;
+	int listen = 0;
 	__u32 ip = 0;
 	__u16 port = 0;
 	cJSON* j_value;
@@ -543,10 +581,18 @@ int cli_infp_do_proxy_task(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 	}
 	port = atoi(j_value->valuestring);
 
+	j_value = cJSON_GetObjectItem(root, "main");
+	if(!j_value || !j_value->valuestring)
+	{
+		CYM_LOG(LV_ERROR, "parse main failed\n");
+		goto out;
+	}
+	listen = atoi(j_value->valuestring);
+
 	while(1)
 	{
 		// 尝试打通NAT
-		cli_infp_do_stun_hello(&gl_cli_infp, offset, mode, ip, port);
+		cli_infp_do_stun_hello(&gl_cli_infp, offset, mode, ip, port, listen);
 	}
 
 	ret = 0;
