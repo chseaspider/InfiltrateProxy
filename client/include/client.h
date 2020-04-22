@@ -35,7 +35,7 @@ enum CLI_INFP_STATE
 
 typedef struct inf_proxy_s
 {
-	char ip[32];			// IP
+	char ip[32];		// IP
 	char  name[32];		// 标识
 	__u32 uptime;		// 更新时间 jiffies
 }inf_proxy_t;
@@ -48,12 +48,13 @@ typedef struct cli_infp_s
 	__u16 svr_b_port;		// 服务器副端口 (网络序)
 
 	__u16 main_port;		// 与服务器连接的主端口, 主连接用
-	__u16 proxy_port[3];	// 准备的代理端口
+	__u16 proxy_port[4];	// 准备的代理端口
 
 	sock_t main_sock;		// 对应main_port
-	sock_t proxy_sock[3];	// 对应proxy_port (代理主连接)
+	sock_t proxy_sock[4];	// 对应proxy_port (代理主连接)
 
 	__u32 nat_type;			// @see C_NAT_TYPE
+	char  ip[32];			// 内网IP地址(TCP打洞时必须配置)
 	char  name[32];			// 客户端标识
 	__u8  mode;				// 客户端模式 0:host, 1:client
 	__u8  pad[3];

@@ -49,7 +49,7 @@ int cli_infp_send_login(sock_t* sock, cli_infp_t* infp)
 
 	int len = snprintf(send_buf, sizeof(send_buf)
 					, "{\"cmd\":\"login\",\"ip\":\"%s\",\"port\":\"%d\","
-					"\"mode\":\"%s\",\"name\":\"%s\",\"allow_tcp\":\"1\"}"
+					"\"mode\":\"%s\",\"name\":\"%s\",\"allow_tcp\":\"0\"}"
 					, IpToStr(local_ip)
 					, infp->main_port
 					, "client"
@@ -235,7 +235,7 @@ int cli_infp_get_nat_port(sock_t* sock, cli_infp_t* infp, int tcp_mode)
 	int i = 0;
 	__u16 port = 0;
 
-	for(i = 0; i < 3; i++)
+	for(i = 0; i < 4; i++)
 	{
 		if(gl_cli_infp.proxy_sock[i].fd > 0)
 		{
@@ -252,7 +252,7 @@ try_bind:
 	}
 
 	port = (rand() % 35535) + 12000;
-	for(i = 0; i < 3; i++)
+	for(i = 0; i < 4; i++)
 	{
 		gl_cli_infp.proxy_port[i] = port + i;
 		if(tcp_mode)
@@ -378,6 +378,7 @@ int cli_infp_do_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip, __u
 	{
 		for(i = 0; i < offset; i++)
 		{
+			printf("sendto %s:%d\n", IpToStr(ip), port+1);
 			cli_infp_send_stun_hello(&infp->proxy_sock[0], infp, ip, htons(port+i));
 		}
 		sleep(1);
@@ -403,14 +404,27 @@ int cli_infp_do_tcp_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip,
 	int i = 0;
 	int ttl = 10;
 
+	// 作服务端的
 	if(listen)
 	{
-		set_sock_ttl(infp->proxy_sock[1].fd, &ttl);
-		set_sock_timeout(infp->proxy_sock[1].fd, 10);// 10毫秒超时
+		if(mode)
+		{
+			for(i = 0; i < offset; i++)
+			{
+				// 第二个端口开始连
+				infp_try_connect(gl_cli_infp.ip, IpToStr(ip), infp->proxy_port[1], port+i, ttl);
+			}
+		}
+		else
+		{
+			for(i = 0; i < offset; i++)
+			{
+				// 同样第二个端口开连
+				infp_try_connect(gl_cli_infp.ip, IpToStr(ip), infp->proxy_port[i+1], port, ttl);
+			}
+		}
 
-		tcp_just_connect(infp->proxy_sock[1].fd, ip, htons(port), 0);
-
-		for(i = 0; i < 3; i++)
+		for(i = 0; i < 4; i++)
 		{
 			close_sock(&infp->proxy_sock[i]);
 			create_tcp(&infp->proxy_sock[i], 0, 0, 1);
@@ -420,23 +434,60 @@ int cli_infp_do_tcp_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip,
 
 		while(1)
 		{
-			sock_t* new_sock = tcp_accept(&infp->proxy_sock[1]);
-			while(new_sock)
+			if(mode)
 			{
-				cli_infp_recv_print_send(new_sock);
-				sleep(1);
+				sock_t* new_sock = tcp_accept(&infp->proxy_sock[1]);
+				while(new_sock)
+				{
+					cli_infp_recv_print_send(new_sock);
+					sleep(1);
+				}
+			}
+			else
+			{
+				for(i = 0; i < offset; i++)
+				{
+					sock_t* new_sock = tcp_accept(&infp->proxy_sock[i+1]);
+					while(new_sock)
+					{
+						cli_infp_recv_print_send(new_sock);
+						sleep(1);
+					}
+				}
 			}
 		}
 	}
 	else
 	{
-		while(!tcp_just_connect(infp->proxy_sock[1].fd, ip, htons(port), 0))
+		// 客户端, 瞎连就完事儿
+		if(mode)
 		{
-			cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 1);
-			while(1)
+			for(i = 0; i < offset; i++)
 			{
-				cli_infp_recv_print_send(&infp->proxy_sock[1]);
-				sleep(1);
+				while(!tcp_just_connect(infp->proxy_sock[1].fd, ip, htons(port+i), 0))
+				{
+					cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 1);
+					while(1)
+					{
+						cli_infp_recv_print_send(&infp->proxy_sock[1]);
+						sleep(1);
+					}
+				}
+			}
+		}
+		else
+		{
+			for(i = 0; i < offset; i++)
+			{
+				while(!tcp_just_connect(infp->proxy_sock[i+1].fd, ip, htons(port), 0))
+				{
+					cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 1);
+					while(1)
+					{
+						cli_infp_recv_print_send(&infp->proxy_sock[1]);
+						sleep(1);
+					}
+				}
 			}
 		}
 	}

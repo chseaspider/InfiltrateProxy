@@ -508,7 +508,7 @@ void infp_guess_port(infp_cli_t *cli)
 		// TODO: 除了等差数列, 还要支持别的
 		int temp = (int)((int)cli->guess[1].nat_port - (int)cli->guess[0].nat_port);
 		cli->guess_port = cli->guess[1].nat_port + (temp * 2);	// TODO: optmize
-		cli->guess_tcp = temp;
+		cli->guess_tcp = (temp*2);
 		CYM_LOG(LV_INFO, "0: %d, 1: %d, guess: %d\n"
 			, cli->guess[0].nat_port, cli->guess[1].nat_port, cli->guess_port);
 	}
@@ -629,7 +629,7 @@ int infp_do_get_tcp_nat_port(cJSON* root, struct sockaddr_in *addr, sock_t *sock
 		cli->guess_port = cli->guess_tcp + cli->nat_tcp;	// tcp猜测端口
 		if(dst->nat_tcp)
 		{
-			// 优先反向打洞(1.对称 syn -> 非对称 2.对称listen 3.非对称 syn -> 对称)
+			// 优先反向打洞(1.非对称 syn -> 对称 2.非对称listen 3.对称 syn -> 非对称)
 			// 此处处理1
 			if(cli->nat_type == SYMMETRICAL_NAT_TYPE && dst->nat_type == SYMMETRICAL_NAT_TYPE)
 			{
@@ -637,11 +637,11 @@ int infp_do_get_tcp_nat_port(cJSON* root, struct sockaddr_in *addr, sock_t *sock
 			}
 			else if(cli->nat_type == SYMMETRICAL_NAT_TYPE)
 			{
-				cli_send_proxy_tcp_task(cli, sock, dst, 0, INFP_DEF_OFFSET, 1);
+				cli_send_proxy_tcp_task(dst, sock, cli, 1, INFP_DEF_OFFSET, 1);
 			}
 			else if(dst->nat_type == SYMMETRICAL_NAT_TYPE)
 			{
-				cli_send_proxy_tcp_task(dst, sock, cli, 0, INFP_DEF_OFFSET, 1);
+				cli_send_proxy_tcp_task(cli, sock, dst, 1, INFP_DEF_OFFSET, 1);
 			}
 			else
 			{
@@ -690,11 +690,11 @@ int infp_do_proxy_task_ack(cJSON* root, struct sockaddr_in *addr, sock_t *sock)
 		if(j_ret == 2)
 		{
 			CYM_LOG(LV_INFO, "成了一半\n");
-			// 优先反向打洞(1.对称 syn -> 非对称 2.对称listen 3.非对称 syn -> 对称)
+			// 优先反向打洞(1.非对称 syn -> 对称 2.非对称listen 3.对称 syn -> 非对称)
 			// 此处处理3
 			if(cli->nat_type == SYMMETRICAL_NAT_TYPE || dst->nat_type == SYMMETRICAL_NAT_TYPE)
 			{
-				cli_send_proxy_tcp_task(dst, sock, cli, 1, INFP_DEF_OFFSET, 0);
+				cli_send_proxy_tcp_task(dst, sock, cli, 0, INFP_DEF_OFFSET, 0);
 			}
 			else
 			{

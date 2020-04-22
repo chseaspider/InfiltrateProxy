@@ -189,16 +189,17 @@ out:
 
 int main(int argc, char *argv[])
 {
-	if(argc < 3)
+	if(argc < 4)
 	{
-		printf("usage: ./client src_name dst_name\n");
+		printf("usage: ./client local_ip src_name dst_name\n");
 		return -1;
 	}
 
 	signal(SIGPIPE, SIG_IGN);
 
-	snprintf(gl_cli_infp.name, sizeof(gl_cli_infp.name), "%s", argv[1]);
-	snprintf(gl_cli_infp.dst.name, sizeof(gl_cli_infp.dst.name), "%s", argv[2]);
+	snprintf(gl_cli_infp.ip, sizeof(gl_cli_infp.ip), "%s", argv[1]);
+	snprintf(gl_cli_infp.name, sizeof(gl_cli_infp.name), "%s", argv[2]);
+	snprintf(gl_cli_infp.dst.name, sizeof(gl_cli_infp.dst.name), "%s", argv[3]);
 	snprintf(gl_cli_infp.dst.ip, sizeof(gl_cli_infp.dst.ip), "0.0.0.0");
 
 	CYM_LOG(LV_QUIET, "start\n");

@@ -32,6 +32,8 @@ limitations under the License.
 #include <arpa/inet.h>
 #include <poll.h>
 #include <unistd.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
 #endif
 #include <fcntl.h>
 #include <string.h>
@@ -180,6 +182,8 @@ void close_sock(sock_t *sock);
 void free_sock(sock_t *sock);
 __u32 get_default_local_ip(void);
 sock_t* sock_find_fd(int fd);
+int infp_try_connect(const char* src, const char* dst, unsigned short sport, unsigned short dport, int ttl);
+
 
 #endif
 
