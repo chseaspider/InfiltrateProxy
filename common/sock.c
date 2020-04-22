@@ -467,7 +467,8 @@ void initPsdHeader(struct psdHeader* header, struct ip* iHeader) {
 unsigned short calcTCPCheckSum(const char* buf) {
 	size_t size = TCP_HEADER_LEN + sizeof(struct psdHeader);
 	unsigned int checkSum = 0;
-	for (int i = 0; i < size; i += 2) {
+	int i;
+	for (i = 0; i < size; i += 2) {
 		unsigned short first = (unsigned short)buf[i] << 8;
 		unsigned short second = (unsigned short)buf[i+1] & 0x00ff;
 		checkSum += first + second;

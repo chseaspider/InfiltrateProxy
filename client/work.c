@@ -49,7 +49,7 @@ int cli_infp_send_login(sock_t* sock, cli_infp_t* infp)
 
 	int len = snprintf(send_buf, sizeof(send_buf)
 					, "{\"cmd\":\"login\",\"ip\":\"%s\",\"port\":\"%d\","
-					"\"mode\":\"%s\",\"name\":\"%s\",\"allow_tcp\":\"0\"}"
+					"\"mode\":\"%s\",\"name\":\"%s\",\"allow_tcp\":\"1\"}"
 					, IpToStr(local_ip)
 					, infp->main_port
 					, "client"
@@ -484,7 +484,7 @@ int cli_infp_do_tcp_stun_hello(cli_infp_t* infp, int offset, int mode, __u32 ip,
 					cli_infp_send_proxy_task_ack(&infp->main_sock, infp, 1);
 					while(1)
 					{
-						cli_infp_recv_print_send(&infp->proxy_sock[1]);
+						cli_infp_recv_print_send(&infp->proxy_sock[i+1]);
 						sleep(1);
 					}
 				}
