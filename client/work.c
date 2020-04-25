@@ -325,38 +325,49 @@ int cli_infp_send_stun_hello(sock_t* sock, cli_infp_t* infp, __u32 ip, __u16 por
 
 void cli_infp_recv_print_send(sock_t *sock, struct sockaddr_in *addr)
 {
-	static __u32 last_send = 0;
-	static __u32 send_count = 0;
-	int socklen = sizeof(*addr);
-	
-	// 总会收包报错的
-	sendto(sock->fd, "hello", 5, 0, (struct sockaddr*)addr, socklen);
-	last_send = jiffies;
-	send_count++;
-
-	while(udp_sock_recv(sock, addr) > 0)
+	set_sock_block(sock->fd);
+	while(1)
 	{
-		if(!strcmp((char*)sock->recv_buf, "world"))
+		static int send_all_len = 0;
+		static int send_len = 0;
+		static int all_count = 0;
+		int socklen = sizeof(*addr);
+
+		if(gl_cli_infp.nat_type != SYMMETRICAL_NAT_TYPE)
 		{
-			printf("%lu ms\n", jiffies - last_send);
-			send_count--;
+			while(1)
+			{
+				char send_buf[1024];
+
+				sprintf(send_buf, "hello %d", all_count++);
+
+				// 总会收包报错的
+				int len = sendto(sock->fd, send_buf, sizeof(send_buf), 0, (struct sockaddr*)addr, socklen);
+				if(len > 0)
+				{
+					send_len += len;
+					send_all_len += sizeof(send_buf);
+				}
+				printf("send_len = %d, all_count = %d, send_all_len / count = %d\n", send_len, all_count, send_all_len / all_count);
+				usleep(10);
+			}
 		}
 		else
 		{
-			sendto(sock->fd, "world", 5, 0, (struct sockaddr*)addr, socklen);
-		}
-		memset(sock->recv_buf, 0, sock->recv_buf_len);
-		sock->recv_len = 0;
+			int recv_len = 0;
+			sendto(sock->fd, "hello", 5, 0, (struct sockaddr*)addr, socklen); // 激活一下客户端
+			while(1)
+			{
+				while(udp_sock_recv(sock, addr) > 0)
+				{
+					memset(sock->recv_buf, 0, sock->recv_buf_len);
+					recv_len += sock->recv_len;
+					sock->recv_len = 0;
 
-		if(send_count <= 0)
-		{
-			break;
+					printf("recv_len = %d\n", recv_len);
+				}
+			}
 		}
-	}
-
-	if(jiffies - last_send > 3000)
-	{
-		printf("cannot connect\n");
 	}
 }
 
