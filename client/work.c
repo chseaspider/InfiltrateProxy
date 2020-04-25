@@ -325,17 +325,19 @@ int cli_infp_send_stun_hello(sock_t* sock, cli_infp_t* infp, __u32 ip, __u16 por
 
 void cli_infp_recv_print_send(sock_t *sock, struct sockaddr_in *addr)
 {
+	int send_all_len = 0;
+	int send_len = 0;
+	int recv_len = 0;
+	int all_count = 0;
+	int socklen = sizeof(*addr);
+
 	set_sock_block(sock->fd);
 	while(1)
 	{
-		static int send_all_len = 0;
-		static int send_len = 0;
-		static int all_count = 0;
-		int socklen = sizeof(*addr);
-
-		if(gl_cli_infp.nat_type != SYMMETRICAL_NAT_TYPE)
+		if(gl_cli_infp.nat_type == SYMMETRICAL_NAT_TYPE)
 		{
-			while(1)
+		SEND:
+			while(send_len < 1024 * 1024 * 10)
 			{
 				char send_buf[1024];
 
@@ -351,12 +353,14 @@ void cli_infp_recv_print_send(sock_t *sock, struct sockaddr_in *addr)
 				printf("send_len = %d, all_count = %d, send_all_len / count = %d\n", send_len, all_count, send_all_len / all_count);
 				usleep(10);
 			}
+			recv_len = 0;
+			goto RECV;
 		}
 		else
 		{
-			int recv_len = 0;
 			sendto(sock->fd, "hello", 5, 0, (struct sockaddr*)addr, socklen); // 激活一下客户端
-			while(1)
+		RECV:
+			while(recv_len < 1024 * 1024 * 10)
 			{
 				while(udp_sock_recv(sock, addr) > 0)
 				{
@@ -367,6 +371,8 @@ void cli_infp_recv_print_send(sock_t *sock, struct sockaddr_in *addr)
 					printf("recv_len = %d\n", recv_len);
 				}
 			}
+			send_len = 0;
+			goto SEND;
 		}
 	}
 }
